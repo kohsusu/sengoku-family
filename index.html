@@ -333,6 +333,11 @@
 
 <div id="titleScreen">
   <div id="titleCard">
+    <div id="langRow" style="text-align:right;font-size:12px;margin-bottom:2px">
+      <button class="ghost" style="padding:2px 8px" onclick="setLang('zh')">中文</button>
+      <button class="ghost" style="padding:2px 8px" onclick="setLang('en')">English</button>
+      <button class="ghost" style="padding:2px 8px" onclick="setLang('ja')">日本語</button>
+    </div>
     <h1>戰國家族記</h1>
     <div class="sub">— 亂世夾縫中的小豪族 —</div>
     <label>存檔欄(可保存四份家史)</label>
@@ -428,6 +433,148 @@
 
 <script>
 'use strict';
+// ============================================================
+// i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
+// (中文字串同時是程式鍵值,故絕不在資料層翻譯)
+// ============================================================
+const LANG = (()=>{ try{
+  const v = localStorage.getItem('sengoku_lang');
+  if(v==='en'||v==='ja'||v==='zh') return v;
+  const n = ((typeof navigator!=='undefined' && navigator.language)||'zh').toLowerCase();
+  return n.indexOf('ja')===0 ? 'ja' : (n.indexOf('zh')===0 ? 'zh' : 'en');
+}catch(e){ return 'zh'; } })();
+function setLang(l){ try{ localStorage.setItem('sengoku_lang', l); }catch(e){} location.reload(); }
+const LI = LANG==='en' ? 0 : 1;   // [en, ja]
+const I18N = {
+'戰國家族記':['Sengoku Family Chronicle','戦国家族記'],
+'— 亂世夾縫中的小豪族 —':['— A minor clan in the cracks of a warring age —','— 乱世の狭間の小さき豪族 —'],
+'存檔欄(可保存四份家史)':['Save slots (up to four family chronicles)','セーブ欄(家史を四つまで保存可)'],
+'── 空欄 ──':['── empty ──','── 空き ──'],
+'家名(姓)':['Family name','家名(姓)'],
+'家紋(選一個代代相傳)':['Family crest (passed down the generations)','家紋(代々受け継ぐ一つを)'],
+'起始之國(決定你的鄰人與命運)':['Starting province (decides your neighbours and fate)','始まりの国(隣人と運命を決める)'],
+'遊玩模式':['Game mode','プレイモード'],
+'家族類型(決定立家之道)':['Clan trade (decides how your house stands)','家業(家の立て方を決める)'],
+'新的家族':['New family','新しい家族'],
+'繼續遊戲':['Continue','続きから'],
+'⚔ 合戰體驗:關原の戰':['⚔ Battle mode: Sekigahara','⚔ 合戦体験:関ヶ原の戦い'],
+'刪除':['Delete','削除'],
+'讀取':['Load','読込'],
+'國人眾':['Kokujin (landholder)','国人衆'],
+'商人眾':['Merchant clan','商人衆'],
+'寺社眾':['Temple clan','寺社衆'],
+'忍眾':['Shinobi clan','忍衆'],
+'水軍眾':['Navy clan','水軍衆'],
+'三河':['Mikawa','三河'], '尾張':['Owari','尾張'], '遠江':['Totomi','遠江'], '信濃':['Shinano','信濃'],
+'米':['Rice','米'], '錢':['Money','銭'], '人口':['Pop.','人口'], '兵':['Troops','兵'],
+'石高':['Kokudaka','石高'], '威望':['Prestige','威望'], '民心':['Morale','民心'],
+'臣從':['Liege','臣従'], '─獨立─':['-- independent --','─独立─'], '官位':['Rank','官位'],
+'水利':['Irrig.','水利'], '商路':['Trade','商路'], '城':['Fort','城'], '樂市':['Market','楽市'], '船':['Ships','船'], '農務':['Farming','農務'],
+'石':['koku','石'], '貫':['kan','貫'], '大名':['Daimyo','大名'],
+'前進':['Advance','前進'], '突擊':['Charge','突撃'], '固守':['Hold','固守'],
+'奪要地':['Take ground','要地奪取'], '直取本陣':['Strike HQ','本陣強襲'], '退避':['Fall back','退避'],
+'▶ 進軍':['▶ March','▶ 進軍'], '⏸ 暫停':['⏸ Pause','⏸ 停止'],
+'速度×1':['Speed x1','速度×1'], '速度×2':['Speed x2','速度×2'],
+'全軍委任':['Delegate all','全軍委任'], '鳴金退兵':['Sound retreat','鳴金退兵'],
+'⛶ 全螢幕':['⛶ Fullscreen','⛶ 全画面'], '⛶ 還原':['⛶ Restore','⛶ 元に戻す'],
+'🕯 內應調略':['🕯 Suborn a contingent','🕯 内応調略'],
+'與力':['Ally (auto)','与力'], '友軍':['Allied (auto)','友軍'], '總大將・坐鎮':['C-in-C (holds)','総大将・本陣'],
+'開戰':['To battle','開戦'], '回到標題':['Back to title','タイトルへ'],
+'再戰此陣營':['Fight again (same side)','同じ陣営で再戦'], '改換陣營再戰':['Switch sides and refight','陣営を替えて再戦'],
+'兩軍列於盤上——下好軍令,按「▶進軍」開戰。':['Both armies are deployed -- set your orders and press "March".','両軍布陣完了——軍令を定め「▶進軍」で開戦。'],
+'(日沒 16:00)':['(sunset 16:00)','(日没 16:00)'],
+'陣位':['Position','陣位'], '軍令':['Orders','軍令'], '兵力':['Troops','兵力'], '士氣':['Morale','士気'],
+'武力':['War','武力'], '內政':['Admin','内政'], '智略':['Wit','智略'], '編成':['Composition','編成'], '特性':['Trait','特性'], '適性':['Aptitude','適性'],
+'足輕':['Ashigaru','足軽'], '弓':['Bows','弓'], '騎馬':['Cavalry','騎馬'], '鐵砲':['Guns','鉄砲'],
+'忠義相隨':['Loyal','忠義一途'], '觀望自保':['Hedging','日和見'], '自行其是':['Independent','独自行動'], '去就未定':['Wavering','去就不明'], '自行節度':['Acts freely','自行裁量'], '敵與力・自行節度':['Enemy vassal (auto)','敵与力・自行裁量'],
+'先鋒':['Vanguard','先鋒'], '左翼':['Left wing','左翼'], '右翼':['Right wing','右翼'], '本陣':['Main camp','本陣'], '殿':['Rearguard','殿'],
+'豐作':['Bumper crop','豊作'], '平年':['Average year','平年'], '凶作':['Poor harvest','凶作'],
+'春':['Spr','春'], '夏':['Sum','夏'], '秋':['Aut','秋'], '冬':['Win','冬'],
+'—— 空欄 ——':['—— empty ——','—— 空き ——'],
+'── 空欄 ──':['── empty ──','── 空き ──'],
+'天文十四年(1545),三河・尾張邊境':['Tenbun 14 (1545), on the Mikawa-Owari border','天文十四年(1545)、三河・尾張の境目'],
+'今川與織田的陰影下,你的家族要活下去。':['In the shadow of Imagawa and Oda, your family must survive.','今川と織田の狭間で、家を生き延びさせよ。'],
+'豪族立志(標準)':['Rise of a Minor Clan (standard)','豪族立志(標準)'],
+'大名之家':['House of a Daimyo','大名の家'],
+'以土地立家':['rooted in the land','土地を以て家を立てる'],
+'各擁專屬兵種':['each with signature units','各々固有の兵種'],
+'亂世諸眾(AI 扮演)':['Other clans (AI-run)','乱世の諸衆(AI担当)']
+};
+const I18N_RX = LANG==='zh' ? [] : [
+[/([辰巳午未申])の刻/g, 'Hour of $1', '$1の刻'],
+[/崩潰,潰兵四散!/g, ' breaks -- troops scatter!', 'は崩れ、潰走!'],
+[/見大勢已去,全軍引き揚げ——不發一矢,揚長而去。/g, ' sees the day is lost and withdraws intact, without loosing an arrow.', 'は大勢決したと見て、矢の一本も放たず全軍引き揚げ。'],
+[/【總崩潰】/g, '[TOTAL ROUT] ', '【総崩れ】'],
+[/【討取】/g, '[SLAIN] ', '【討取】'],
+[/【裏切り】/g, '[BETRAYAL] ', '【裏切り】'],
+[/【向西】/g, '[TO THE WEST] ', '【西へ】'],
+[/【調略失敗】/g, '[SUBVERSION FAILED] ', '【調略失敗】'],
+[/據高地——先得形勝。/g, ' takes the high ground -- the field favors them.', 'は高地を占拠——形勝を先取。'],
+[/據渡口——先得形勝。/g, ' takes the ford -- the field favors them.', 'は渡し場を占拠——形勝を先取。'],
+[/我方壓制/g, 'we dominate', '我が方優勢'],
+[/我方吃緊/g, 'we are pressed', '我が方劣勢'],
+[/勢均力敵/g, 'evenly matched', '互角'],
+[/敵損 (\d+)、我損 (\d+)。/g, 'enemy -$1, ours -$2.', '敵損 $1、味方損 $2。'],
+[/(\d+)兵/g, '$1 men', '$1兵'],
+[/氣(\d+)/g, 'mor $1', '気$1'],
+[/ vs 敵 /g, ' vs Foe ', ' vs 敵 '],
+[/⚠【我方本陣動搖】/g, '⚠ [OUR HQ WAVERS] ', '⚠【自軍本陣動揺】'],
+[/⚠【敵方本陣動搖】/g, '⚠ [ENEMY HQ WAVERS] ', '⚠【敵本陣動揺】'],
+[/攻▶/g, 'Atk▶', '攻▶'],
+[/日沒/g, 'sunset', '日没'],
+[/一番槍/g, 'First Spear', '一番槍']
+];
+const txDone = (typeof WeakSet!=='undefined') ? new WeakSet() : {has:function(){return false;}, add:function(){}};
+function txText(t){
+  if(LANG==='zh') return null;
+  const k = t.trim();
+  if(!k) return null;
+  const hit = I18N[k];
+  if(hit && hit[LI] != null) return t.replace(k, hit[LI]);
+  let out = t, changed = false;
+  for(const r of I18N_RX){ const nn = out.replace(r[0], r[LI+1]); if(nn !== out){ out = nn; changed = true; } }
+  return changed ? out : null;
+}
+function txWalk(root){
+  if(LANG==='zh' || !root || typeof document==='undefined' || !document.createTreeWalker) return;
+  try{
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n;
+    while((n = w.nextNode())){
+      if(txDone.has(n)) continue;
+      const r = txText(n.nodeValue);
+      if(r !== null) n.nodeValue = r;
+      txDone.add(n);
+    }
+    if(root.querySelectorAll) root.querySelectorAll('[title],[placeholder]').forEach(el=>{
+      ['title','placeholder'].forEach(a=>{
+        const v = el.getAttribute(a);
+        if(v){ const r = txText(v); if(r !== null) el.setAttribute(a, r); }
+      });
+    });
+  }catch(e){}
+}
+if(typeof MutationObserver !== 'undefined' && typeof window !== 'undefined' && LANG !== 'zh'){
+  window.addEventListener('DOMContentLoaded', ()=>{
+    new MutationObserver(muts=>{
+      for(const m of muts){
+        if(m.type === 'childList') m.addedNodes.forEach(nd=>{
+          if(nd.nodeType === 3){ if(!txDone.has(nd)){ const r = txText(nd.nodeValue); if(r !== null) nd.nodeValue = r; txDone.add(nd); } }
+          else txWalk(nd);
+        });
+        else if(m.type === 'characterData' && !txDone.has(m.target)){
+          const r = txText(m.target.nodeValue);
+          if(r !== null) m.target.nodeValue = r;
+          txDone.add(m.target);
+        }
+      }
+    }).observe(document.body, {childList:true, subtree:true, characterData:true});
+    txWalk(document.body);
+    const cur = {zh:'中文', en:'English', ja:'日本語'}[LANG];
+    document.querySelectorAll('#langRow button').forEach(b=>{ if(b.textContent === cur){ b.style.fontWeight='bold'; b.style.borderColor='#8a2a1e'; } });
+  });
+}
+
 // ============================================================
 // 戰國家族記 P0 — 季回合核心循環(屯田/農務/狩獵/練兵/經商/普請)
 // ============================================================

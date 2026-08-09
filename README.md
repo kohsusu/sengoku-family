@@ -35,6 +35,11 @@
 - **The Battle of Sekigahara**: playable from the title screen (no save slot needed) — command Ōtani Yoshitsugu (West, brutal) or Kuroda Nagamasa (East, standard) with historical deployment: Mōri sits idle on Mt. Nangū, and Kobayakawa on Mt. Matsuo may betray either side. Perhaps this time, history takes another road
 - **17 historical events**: Okehazama (with an alternate "Imagawa marches on Kyōto" timeline if you save Yoshimoto), Honnō-ji, Sekigahara, Ōsaka, and more
 
+## 語言 / Languages / 言語
+
+介面支援**中文／English／日本語**——依瀏覽器語系自動選擇，也可在標題畫面右上角切換。翻譯採顯示層字典（遊戲邏輯不受語系影響），目前涵蓋標題、主介面與盤上指揮戰鬥全 UI；敘事事件文本漸進翻譯中。
+UI available in **Chinese / English / Japanese** — auto-detected from your browser, switchable at the top of the title screen. Core UI and the hex-battle interface are fully covered; narrative event text is being translated progressively.
+
 ## 技術 / Tech
 
 - **單一 HTML 檔（約 600KB）**，無框架無依賴：Canvas 2D 繪製地圖／戰場／程序化人物面孔，localStorage 四欄存檔（格式自 v1 起向後相容）
