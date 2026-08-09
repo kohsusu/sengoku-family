@@ -1,0 +1,26 @@
+const r=require('./runs.json');
+const med=a=>{const s=a.slice().sort((x,y)=>x-y);return s.length?s[Math.floor(s.length/2)]:0;};
+console.log('=== 錢/米 分佈 ===');
+[['money','錢'],['rice','米'],['koku','石高'],['retainers','家臣'],['pop','人口']].forEach(([k,n])=>{
+  const v=r.map(x=>x[k]).sort((a,b)=>a-b);
+  console.log(' '+n.padEnd(4), 'p10',v[10],'中位',v[50],'p90',v[90],'max',v[99]);
+});
+console.log('\n=== 家臣人數超過 8 的場次 ===', r.filter(x=>x.retainers>8).length+'/100');
+console.log('\n=== 大名昇格者的終局 ===');
+const d=r.filter(x=>x.daimyo);
+console.log(' 場次',d.length,'| 中位石高',med(d.map(x=>x.koku)),'| 中位兵',med(d.map(x=>x.sol)),'| 中位從屬',med(d.map(x=>x.vassals)));
+console.log(' 打過國戰:', d.filter(x=>/國戰/.test(x.titleSet.join('|'))).length);
+console.log(' 討取敵將總數:', d.reduce((a,x)=>a+x.slain,0));
+console.log('\n=== 未使用的系統(玩家面板動作,模擬未點) ===');
+console.log(' 有從屬眾的場次:', r.filter(x=>x.vassals>0).length);
+console.log(' 有城砦的場次:', r.filter(x=>x.fort>0).length);
+console.log(' 有官位的場次:', r.filter(x=>x.kani>0).length);
+console.log('\n=== 一揆與民心 ===');
+console.log(' 民心 p10/中位/p90:', r.map(x=>x.minshin).sort((a,b)=>a-b)[10], med(r.map(x=>x.minshin)), r.map(x=>x.minshin).sort((a,b)=>a-b)[90]);
+console.log('\n=== 世代數 ===');
+const g=r.map(x=>x.gens).sort((a,b)=>a-b);
+console.log(' 中位',med(r.map(x=>x.gens)),'範圍',g[0],'~',g[99]);
+console.log('\n=== 最常見事件(取樣自 lineSet) ===');
+const cnt={};
+r.forEach(x=>x.titleSet.forEach(t=>{ const k=t.replace(/[「」].*?[「」]/g,'').replace(/\d+/g,'N'); cnt[k]=(cnt[k]||0)+1; }));
+Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,22).forEach(([k,v])=>console.log('  '+String(v).padStart(3), k));
