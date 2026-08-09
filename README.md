@@ -39,7 +39,7 @@
 
 - **單一 HTML 檔（約 600KB）**，無框架無依賴：Canvas 2D 繪製地圖／戰場／程序化人物面孔，localStorage 四欄存檔（格式自 v1 起向後相容）
 - **Balance by simulation**: a Node.js + DOM-shim harness (`_sim/`) replays hundreds of full campaigns per change — 0 errors / 0 audit violations is the release gate; battle win rates are calibrated with N≥300 sweeps (the Sekigahara 40% target alone took ~8,000 simulated battles)
-- Hosting: Firebase（`發佈.bat` 一鍵部署）
+- Hosting: Firebase
 
 ### 本地執行 / Run locally
 
