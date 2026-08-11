@@ -1999,7 +1999,31 @@ function simRivalPolitics(lines){
       if(b){ a.marrTo = b.id; b.marrTo = a.id;
         if(!(a.allies||[]).includes(b.id)) (a.allies = a.allies||[]).push(b.id);
         if(!(b.allies||[]).includes(a.id)) (b.allies = b.allies||[]).push(a.id);
-        lines.push(`${fname(a)}與${fname(b)}結為姻親,盟好益固。`); }
+        lines.push(`${fname(a)}與${fname(b)}結為姻親,盟好益固。`);
+        // 婚儀賀帖:與我有往來者的婚儀,是修好的機會
+        if(!S.gameOver && (a.rel >= 10 || b.rel >= 10 || a.lord === 'player' || b.lord === 'player')){
+          queueModal({title:`💒 婚儀——${fname(a)}與${fname(b)}結親`,
+            body:`${fname(a)}嫡男迎${fname(b)}之女,吉日已定,兩家發帖遍請近鄰。
+
+${S.famName}家亦在受請之列。`,
+            choices:[
+              {label:'遣使道賀', sub:'禮數周到,不費分文(兩家關係 +2)', fn:()=>{
+                [a,b].forEach(f=>{ f.rel = clamp(f.rel+2,-100,100); });
+                log(`遣使往賀——兩家俱有謝辭(關係各 +2)。`,'good');
+              }},
+              {label:'厚贈賀儀(20貫)', sub:'兩家關係 +6、威望 +1', fn:()=>{
+                if(S.money < 20){ log('囊中羞澀,僅遣使空手道賀。',''); [a,b].forEach(f=>{ f.rel=clamp(f.rel+2,-100,100); }); return; }
+                S.money -= 20;
+                [a,b].forEach(f=>{ f.rel = clamp(f.rel+6,-100,100); });
+                S.prestige += 1;
+                log(`賀儀山積,婚宴上${S.famName}家使者座次居前(兩家關係 +6・威望 +1)。`,'good');
+              }},
+              {label:'置若罔聞', sub:'兩家關係 -3', fn:()=>{
+                [a,b].forEach(f=>{ f.rel = clamp(f.rel-3,-100,100); });
+                log(`婚宴之上,獨缺${S.famName}家一席——兩家記在心裡(關係 -3)。`,'bad');
+              }}
+            ]});
+        } }
     }
   }
   // ── 併吞:方針為併吞且兵力已足者,出兵(事前一季有風聞) ──
@@ -3032,6 +3056,7 @@ function simRivals(lines){
     }
   }
   // AI 之間私鬥(小衝突;真正的併吞戰走 simRivalPolitics 的風聞流程)
+  // 升級:仇家優先(宿怨≥25先打誰);打到玩家從屬眾→請援事件,玩家可出兵/調停/坐視
   const fighters = S.rivals.filter(f=>f.alive);
   if(fighters.length >= 2 && Math.random() < 0.15){
     const budan = fighters.filter(f=>f.persona==='武斷');
@@ -3039,14 +3064,112 @@ function simRivals(lines){
     const targets = neighborsOf(agg).filter(f=> !(f.lord && f.lord === agg.lord)
       && !(agg.allies||[]).includes(f.id) && f.id !== agg.marrTo);           // 盟友姻親不相鬥;且須接壤
     if(targets.length){
-      const tgt = targets[Math.floor(Math.random()*targets.length)];
-      const pA = rSol(agg)*(1+(agg.fort||0)*0.1), pB = rSol(tgt)*(1+(tgt.fort||0)*0.28);
-      const [w,l] = (Math.random() < pA/(pA+pB)) ? [agg,tgt] : [tgt,agg];
-      const take = ri(l.koku*0.08);
-      w.koku += take; l.koku -= take;
-      w.sol = Math.max(0, w.sol - ri(rSol(w)*0.08)); l.sol = Math.max(0, l.sol - ri(rSol(l)*0.15));
-      addGrudge(l, w.id, 22); addGrudge(tgt, agg.id, 10);
-      lines.push(`${fname(agg)}與${fname(tgt)}私鬥,${fname(w)}得勝,奪地 ${take} 石。`);
+      const sworn = targets.filter(f=> rGrudge(agg, f.id) >= 25);            // 有宿怨,先打仇家
+      const tgt = sworn.length ? sworn.reduce((a,b)=> rGrudge(agg,a.id) >= rGrudge(agg,b.id) ? a : b)
+                : targets[Math.floor(Math.random()*targets.length)];
+      const skirmish = (aidTroops)=>{
+        const pA = rSol(agg)*(1+(agg.fort||0)*0.1), pB = rSol(tgt)*(1+(tgt.fort||0)*0.28) + (aidTroops||0)*0.8;
+        const [w,l] = (Math.random() < pA/(pA+pB)) ? [agg,tgt] : [tgt,agg];
+        const take = ri(l.koku*0.08);
+        w.koku += take; l.koku -= take;
+        w.sol = Math.max(0, w.sol - ri(rSol(w)*0.08)); l.sol = Math.max(0, l.sol - ri(rSol(l)*0.15));
+        addGrudge(l, w.id, 22); addGrudge(tgt, agg.id, 10);
+        return {w, l, take};
+      };
+      if(tgt.lord === 'player' && !S.gameOver){
+        // 從屬之家遭攻——來使請援(事件)
+        queueModal({title:`⚡ 私戰——${fname(agg)}兵犯${fname(tgt)}`,
+          body:`${fname(tgt)}來使泥首於庭:
+
+「${fname(agg)}藉境相論之名,聚兵 ${rSol(agg)} 犯我${tgt.seat}!`+
+            `${rGrudge(agg,tgt.id)>=25?'兩家宿怨已深,此番必欲甘休。':''}
+乞主家發兵相救!」
+
+`+
+            `${fname(agg)} 兵 ${rSol(agg)}${agg.fort?`・城砦${agg.fort}級`:''}　${fname(tgt)} 兵 ${rSol(tgt)}${tgt.fort?`・城砦${tgt.fort}級`:''}(我方可援 ${S.soldiers} 兵)`,
+          choices:[
+            {label:'坐視——各家自掃門前雪', sub:`${fname(tgt)}關係與信心俱挫`, fn:()=>{
+              tgt.rel = clamp(tgt.rel-8,-100,100);
+              tgt.ltrust = clamp((tgt.ltrust!=null?tgt.ltrust:50)-6, 0, 100);
+              const r2 = skirmish(0);
+              log(`${fname(agg)}與${fname(tgt)}戰於境上,${fname(r2.w)}得勝,奪地 ${r2.take} 石。${fname(tgt)}寒心(關係 -8)。`, r2.w===tgt?'':'bad');
+            }},
+            {label:'出兵相助', sub:`合兵擊退來犯——${fname(tgt)}必感此恩(需兵≥30)`, fn:()=>{
+              if(S.soldiers < 30){ log('兵備不足,徒呼負負——只得坐視。','bad'); const r0=skirmish(0); return; }
+              const aid = ri(S.soldiers*0.6);
+              const r2 = skirmish(aid);
+              const myLoss = ri(S.soldiers * (r2.w===tgt ? 0.04 : 0.09));
+              U_KEYS.forEach(k=>{ S.army[k] = Math.max(0, S.army[k] - ri(myLoss * (S.army[k]||0) / Math.max(1,S.soldiers))); });
+              S.soldiers = armyTotal(S.army);
+              if(r2.w === tgt){
+                tgt.rel = clamp(tgt.rel+10,-100,100);
+                tgt.ltrust = clamp((tgt.ltrust!=null?tgt.ltrust:50)+8, 0, 100);
+                tgt.on = clamp((tgt.on||0)+12, 0, 100);
+                addGrudge(agg, 'player', 18);
+                log(`與${fname(tgt)}合兵,大破${fname(agg)}於境上!折兵 ${myLoss},然${fname(tgt)}感恩戴德(關係 +10・恩義 +12)。`,'good');
+              }else{
+                tgt.rel = clamp(tgt.rel+4,-100,100);
+                addGrudge(agg, 'player', 12);
+                log(`援軍不及,${fname(tgt)}仍失地 ${r2.take} 石——然共患難之誼已結(關係 +4),我折兵 ${myLoss}。`,'bad');
+              }
+            }},
+            {label:'調停', sub:`以威望折衝樽俎(需威望≥50;成則兩家息兵)`, fn:()=>{
+              if(S.prestige < 50){ log('人微言輕,兩家不聽——戰事照舊。','bad'); skirmish(0); return; }
+              if(Math.random() < 0.75){
+                tgt.rel = clamp(tgt.rel+5,-100,100);
+                agg.rel = clamp(agg.rel+3,-100,100);
+                S.prestige += 3;
+                log(`一紙調停書往復,兩家陣前罷兵——${S.famName}家威望更著(+3)。`,'good');
+              }else{
+                S.prestige = Math.max(0, S.prestige-2);
+                log(`調停不成,${fname(agg)}擲書於地——兵戈依舊(威望 -2)。`,'bad');
+                skirmish(0);
+              }
+            }}
+          ]});
+      }else{
+        const r2 = skirmish(0);
+        lines.push(`${fname(agg)}與${fname(tgt)}私鬥,${fname(r2.w)}得勝,奪地 ${r2.take} 石。`);
+      }
+    }
+  }
+  // 家中喧嘩:自家從屬眾之間動了刀兵——喧嘩兩成敗是戰國之法度
+  if(!S.gameOver && Math.random() < 0.05){
+    const mine = myVassals();
+    if(mine.length >= 2){
+      const a = pick1(mine);
+      const bs = mine.filter(x=> x!==a && rdist(a,x) <= NEIGHBOR_R);
+      const b = bs.find(x=> rGrudge(a,x.id) >= 15) || (Math.random() < 0.4 ? pick1(bs.length?bs:[null]) : null);
+      if(b){
+        queueModal({title:`🔥 家中喧嘩——${fname(a)}與${fname(b)}械鬥`,
+          body:`${a.seat}與${b.seat}之百姓爭水爭境,兩家遂各聚兵仗,械鬥於野——已有死傷。
+
+`+
+            `兩家皆我從屬。主家如何裁斷,眾目睽睽。`,
+          choices:[
+            {label:'喧嘩兩成敗', sub:'不問曲直,兩家同罰——家法立威(威望 +3,兩家關係小挫)', fn:()=>{
+              [a,b].forEach(f=>{ f.koku = Math.max(100, f.koku - ri(f.koku*0.03)); f.rel = clamp(f.rel-4,-100,100); });
+              addGrudge(a, b.id, -20); addGrudge(b, a.id, -20);
+              S.prestige += 3;
+              log(`依戰國法度,喧嘩兩成敗——兩家各罰知行,私怨就此打住。家中肅然(威望 +3)。`,'good');
+            }},
+            {label:`偏袒${fname(a)}`, sub:`${fname(a)}感恩,${fname(b)}銜恨`, fn:()=>{
+              a.rel = clamp(a.rel+8,-100,100);
+              b.rel = clamp(b.rel-12,-100,100); addGrudge(b, 'player', 12);
+              log(`裁斷偏向${fname(a)}——${fname(b)}表面領命,私下銜恨(關係 -12)。`,'bad');
+            }},
+            {label:`偏袒${fname(b)}`, sub:`${fname(b)}感恩,${fname(a)}銜恨`, fn:()=>{
+              b.rel = clamp(b.rel+8,-100,100);
+              a.rel = clamp(a.rel-12,-100,100); addGrudge(a, 'player', 12);
+              log(`裁斷偏向${fname(b)}——${fname(a)}表面領命,私下銜恨(關係 -12)。`,'bad');
+            }},
+            {label:'置之不問', sub:'任其自了——兩家皆疑主家之能', fn:()=>{
+              [a,b].forEach(f=>{ f.ltrust = clamp((f.ltrust!=null?f.ltrust:50)-6, 0, 100); });
+              addGrudge(a, b.id, 12); addGrudge(b, a.id, 12);
+              log(`主家不問,兩家私怨愈深——從屬眾皆疑${S.famName}家御下之能(信心俱降)。`,'bad');
+            }}
+          ]});
+      }
     }
   }
   // 未依附之眾的去就(選邊;三河人親近岡崎的松平/德川)
