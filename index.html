@@ -401,7 +401,7 @@
         <div class="row">軍備:<span id="drillBtns"></span></div>
         <div class="row">
           <button id="btnYatoi" class="ghost">雇傭兵</button>
-          <button id="btnMine" class="ghost" style="display:none">⛏ 山金掘り</button>
+          <button id="btnMine" class="ghost" style="display:none">⛏ 金鶏金山</button>
           <span id="yatoiInfo"></span>
         </div>
         <div class="row"><span id="armyInfo"></span></div>
@@ -2542,6 +2542,12 @@ function simLords(lines){
             (wasPlayers ? `——${S.famName}家失一從屬!` : ''));
         }
       }
+    }
+    // 甲州金山之利:黑川・湯之奧諸金山歲出黃金——信玄多線開戰的底氣(史實:甲斐才是戰國金山的代名詞)
+    if(key === 'takeda'){
+      const kin = ri((18 + Math.random() * 18) * (L.demesne > 8000 ? 0.4 : 1));
+      grow += kin;
+      if(Math.random() < 0.3) lines.push(`⛏ 甲州金山出金——武田家直轄 +${kin} 石(黑川金山之利)。`);
     }
     L.demesne = ri(L.demesne + grow);
     if(best && grow >= 20) lines.push(`${LORD_META[key].name}家 ${best.v.n} ${best.act},直轄領 +${ri(grow)} 石(現 ${L.demesne})。`);
@@ -9289,8 +9295,8 @@ function render(){
         if(show){
           const mc = 200 * ((S.mine||0) + 1);
           bm.disabled = S.gameOver || (S.mine||0) >= 3 || S.money < mc;
-          bm.textContent = (S.mine||0) >= 3 ? `⛏ 礦山 3 級(極)` : `⛏ 山金掘り(${mc}貫)`;
-          bm.title = `信濃山國之利:開掘金山(現 ${S.mine||0} 級,最高 3)。掘礦是賭博:歲末約 ${36+((S.mine||0)+1)*2}% 機率掘中礦脈(每級 48~86 貫),偶見大金脈一夜暴富,亦偶有山崩。`;
+          bm.textContent = (S.mine||0) >= 3 ? `⛏ 金鶏金山 3 級(極)` : `⛏ 金鶏金山(${mc}貫)`;
+          bm.title = `川上金鶏金山(現 ${S.mine||0} 級,最高 3)——山國小礦,不比甲州黑川。掘礦是賭博:歲末約 ${36+((S.mine||0)+1)*2}% 機率掘中礦脈(每級 48~86 貫),偶見大金脈一夜暴富,亦偶有山崩。`;
         }
       }
     }
@@ -9512,7 +9518,8 @@ function openLord(key){
   const L = S.lords[key], M = LORD_META[key];
   const vassals = S.rivals.filter(f=>f.alive && f.lord===key);
   const roster = lordRoster(key), slain = (S.slain && S.slain[key]) || [];
-  let body = `本據:${M.capital}\n國力 ${lordPower(key)} = 直轄領 ${L.demesne} 石 + 從屬眾${vassals.length + (S.allegiance===key?1:0)}家`+
+  let body = `本據:${M.capital}\n國力 ${lordPower(key)} = 直轄領 ${L.demesne} 石 + 從屬眾${vassals.length + (S.allegiance===key?1:0)}家`+(key==='takeda'?`
+⛏ 甲州金山(黑川・湯之奧):歲出黃金,直轄自然增長——信玄的軍資金`:'')+
     ((L.wounds||0) >= 0.05 ? `\n⚔ 戰創 -${ri(L.wounds*100)}%——可出兵約 ${Math.max(40, ri(lordPower(key)*3.4*(1-(L.wounds||0))))}(滿編 ${ri(lordPower(key)*3.4)}),兵員徵補尚需時日` : '')+`\n`+
     (roster.length
       ? `重臣 ${roster.length} 人(知行依階級分授):\n`+
@@ -10753,7 +10760,7 @@ $('btnMine').onclick = () => {
   if(S.money < mc) return;
   S.money -= mc;
   S.mine = (S.mine||0) + 1;
-  log(`⛏ 徵發礦夫、鑿山開洞——山金掘り ${S.mine} 級開張!(歲末出金,偶有山崩之險)`,'good');
+  log(`⛏ 徵發礦夫、鑿山開洞——金鶏金山 ${S.mine} 級開張!(有挖到才有報酬,偶有山崩之險)`,'good');
   save(); render();
 };
 $('btnKuge').onclick = () => {
