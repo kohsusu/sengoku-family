@@ -229,6 +229,19 @@
   canvas.face.k-ronin{border-color:#5a6a8e}
   canvas.face.k-fudai{border-color:#8a7248}
   /* 戰況 HUD */
+  #modalHud .sktitle{font-weight:bold;margin:8px 0 2px;font-size:15px}
+  #modalHud .skun{color:#a02818;margin-left:8px;font-size:12px;font-weight:normal}
+  #modalHud .sktier{margin:8px 0 4px;color:#7a6a4f;font-size:12px;border-bottom:1px dashed var(--line);padding-bottom:2px}
+  #modalHud .sktier.sktlock{opacity:.55}
+  #modalHud .skrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:2px}
+  #modalHud .sknode{border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;background:rgba(246,239,221,.55);line-height:1.35}
+  #modalHud .sknode b{font-size:13px}
+  #modalHud .sknode small{display:block;font-size:11px;color:#7a6a4f;margin-top:1px}
+  #modalHud .skpip{float:right;color:#8a2a1e;letter-spacing:2px;font-size:11px}
+  #modalHud .sknode.skcan{border-color:#8a2a1e;cursor:pointer;box-shadow:0 1px 5px rgba(138,42,30,.28);background:#fff8ea}
+  #modalHud .sknode.skcan:hover{background:#ffefd8}
+  #modalHud .sknode.skmax{border-color:#b8963e;background:rgba(232,200,122,.28)}
+  #modalHud .sknode.sklock{opacity:.45;filter:grayscale(.4)}
   #modalHud .bfield{display:block;width:100%;border:1px solid var(--line);border-radius:8px;margin-bottom:9px;box-shadow:inset 0 0 14px rgba(96,68,34,.12)}
   #modalHud .bhud{display:flex;gap:8px;align-items:stretch;margin-bottom:13px}
   .bside{flex:1;background:rgba(255,255,255,.5);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
@@ -1437,42 +1450,48 @@ const skSpent = (tree, t) => {
 };
 const skUnspent = tree => Math.max(0, (tree==='suiri' ? (S.suiri||0) : (S.tradeLv||0)) - skSpent(tree,1) - skSpent(tree,2) - skSpent(tree,3));
 const skTierOpen = (tree, t) => t === 1 ? true : t === 2 ? skSpent(tree,1) >= 5 : skSpent(tree,2) >= 5;
-function skPickModal(tree){
-  if(!S || S.gameOver || skUnspent(tree) <= 0) return;
-  const pool = Object.entries(SKILLS[tree]).filter(([k,d])=> skTierOpen(tree, d.t) && skR(tree,k) < d.max);
-  if(!pool.length) return;
-  queueModal({
-    title:`📜 ${tree==='suiri' ? '治水の議' : '商政の議'}——擇一而修(餘 ${skUnspent(tree)} 點)`,
-    body:(tree==='suiri'
-      ? '水利普請有成,錢糧投於何處,家中各執一詞。\nT1 累計 5 級開 T2;T2 累計 5 級開 T3。'
-      : '商路既通,座商馬借各獻其策。\nT1 累計 5 級開 T2;T2 累計 5 級開 T3。'),
-    choices: pool.map(([k,d])=>({
-      label:`T${d.t}・${d.name}(${skR(tree,k)}/${d.max})`,
-      sub:d.desc,
-      fn:()=>{
-        const sk = tree==='suiri' ? (S.skSuiri = S.skSuiri || {}) : (S.skTrade = S.skTrade || {});
-        sk[k] = (sk[k]||0) + 1;
-        if(k === 'yousui') S.minshin = clamp(S.minshin + 2, 0, 100);
-        if(k === 'zayaku') S.minshin = clamp(S.minshin + 1, 0, 100);
-        log(`📜 ${d.name} 修至 ${sk[k]}/${d.max} 級。`, 'good');
-        save(); render();
-        if(skUnspent(tree) > 0) skPickModal(tree);   // 連點至配完(舊檔遷移一次補齊)
-      }
-    }))
-  });
-  pumpModal();
+function skPickModal(tree){ skView(); }
+const SK_TIER = ['初傳', '中傳', '奧傳'];
+function skNodeHtml(tree, key, d){
+  const r = skR(tree, key), open = skTierOpen(tree, d.t);
+  const can = open && skUnspent(tree) > 0 && r < d.max;
+  const pips = Array.from({length: d.max}, (_, i) => i < r ? '●' : '○').join('');
+  const cls = r >= d.max ? 'skmax' : can ? 'skcan' : open ? '' : 'sklock';
+  return `<div class="sknode ${cls}"${can ? ` onclick="skAlloc('${tree}','${key}')" title="點擊修習"` : ''}>` +
+    `<b>${d.name}</b><span class="skpip">${pips}</span><small>${d.desc}</small></div>`;
+}
+function skTreeHtml(tree){
+  const lv = tree === 'suiri' ? (S.suiri||0) : (S.tradeLv||0);
+  const un = skUnspent(tree);
+  let h = `<div class="sktitle">${tree === 'suiri' ? '🌊 治水' : '🛤 商政'} ${lv}/12 級` +
+    (un ? `<span class="skun">可配 ${un} 點——點亮框者可修</span>` : '') + `</div>`;
+  for(const t of [1, 2, 3]){
+    const open = skTierOpen(tree, t);
+    h += `<div class="sktier${open ? '' : ' sktlock'}">${SK_TIER[t-1]}${open ? '' : ` <small>(${SK_TIER[t-2]}累計 5 級而開)</small>`}</div>`;
+    h += `<div class="skrow">` + Object.entries(SKILLS[tree]).filter(([k,d]) => d.t === t)
+      .map(([k,d]) => skNodeHtml(tree, k, d)).join('') + `</div>`;
+  }
+  return h;
+}
+function skAlloc(tree, key){
+  const d = SKILLS[tree][key];
+  if(!d || !S || S.gameOver || skUnspent(tree) <= 0 || !skTierOpen(tree, d.t) || skR(tree, key) >= d.max) return;
+  const sk = tree === 'suiri' ? (S.skSuiri = S.skSuiri || {}) : (S.skTrade = S.skTrade || {});
+  sk[key] = (sk[key]||0) + 1;
+  if(key === 'yousui') S.minshin = clamp(S.minshin + 2, 0, 100);
+  if(key === 'zayaku') S.minshin = clamp(S.minshin + 1, 0, 100);
+  log(`📜 ${d.name} 修至 ${sk[key]}/${d.max} 級。`, 'good');
+  save(); render();
+  const w = $('skWrap');
+  if(w) w.innerHTML = skTreeHtml('suiri') + skTreeHtml('trade');
 }
 function skView(){
-  const part = tree => {
-    const nm = tree==='suiri' ? '🌊 治水' : '🛤 商政';
-    const lv = tree==='suiri' ? (S.suiri||0) : (S.tradeLv||0);
-    const rows = Object.entries(SKILLS[tree]).map(([k,d])=>
-      `　T${d.t} ${d.name} ${skR(tree,k)}/${d.max}${skR(tree,k)?'':'　'}${skTierOpen(tree,d.t)?'':'(未解鎖)'}`).join('\n');
-    return `${nm} ${lv}/12 級(未配點 ${skUnspent(tree)})\n`+
-      `　T2:${skTierOpen(tree,2)?'已開':'T1滿5開'}　T3:${skTierOpen(tree,3)?'已開':'T2滿5開'}\n${rows}`;
-  };
-  queueModal({ title:'📜 治水・商政技能', body: part('suiri') + '\n\n' + part('trade'),
-    choices:[{label:'領命', fn:()=>{ if(skUnspent('suiri')) skPickModal('suiri'); if(skUnspent('trade')) skPickModal('trade'); }}] });
+  const dup = m => m && m.title && m.title.indexOf('治水・商政') >= 0;
+  if(typeof modalQueue !== 'undefined' && modalQueue.some(dup)) return;
+  if(!$('modalBack').classList.contains('hidden') && $('modalTitle').textContent.indexOf('治水・商政') >= 0) return;
+  queueModal({ title:'📜 治水・商政之道',
+    hud:`<div id="skWrap">` + skTreeHtml('suiri') + skTreeHtml('trade') + `</div>`,
+    body:'', choices:[{label:'領命', fn:()=>{}}] });
   pumpModal();
 }
 // ---------- 人物特性(隨機個性,影響玩法) ----------

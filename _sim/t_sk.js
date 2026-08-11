@@ -31,31 +31,24 @@ const clickBy = re => {
   return !!b;
 };
 
-// ── A. 閘門與配點流程 ──
+// ── A. 閘門與配點流程(直呼 skAlloc;UI 節點在瀏覽器驗) ──
 {
   fresh();
-  ev('S.suiri = 7;');   // 舊檔遷移情境:7級0點
+  ev('S.suiri = 7;');
   ok('A0 未配點=7', ev(`skUnspent('suiri')`)===7, ev(`skUnspent('suiri')`));
-  ev(`skPickModal('suiri')`);
-  let t2Early = /T2/.test([...$('modalChoices').querySelectorAll('button')].map(b=>b.textContent).join(''));
-  ok('A1 初始僅T1可選', !t2Early && /T1・溜池普請/.test($('modalChoices').textContent), '');
-  // 連點5次T1(溜池3+新田2)
-  for(let i=0;i<3;i++) clickBy(/溜池普請/);
-  for(let i=0;i<2;i++) clickBy(/新田開發/);
-  ok('A2 溜池3級封頂後選單不再出現', !/溜池普請/.test($('modalChoices').textContent), '');
-  ok('A3 T1滿5點→T2解鎖', /T2・堤防強化/.test($('modalChoices').textContent), '');
-  ok('A4 T3未解鎖', !/T3・/.test($('modalChoices').textContent), '');
-  clickBy(/堤防強化/); clickBy(/堤防強化/);
-  ok('A5 7點配完選單自動收', $('modalBack').classList.contains('hidden'), '');
-  ok('A6 ranks正確', ev(`skR('suiri','tameike')`)===3 && ev(`skR('suiri','shinden')`)===2 && ev(`skR('suiri','teibou')`)===2, '');
-  // 續升至12:T2滿5後開T3
+  ok('A1 T2初始鎖定:skAlloc無效', (ev(`skAlloc('suiri','teibou')`), ev(`skR('suiri','teibou')`))===0, '');
+  for(let i=0;i<4;i++) ev(`skAlloc('suiri','tameike')`);   // 第4次應被3級上限擋下
+  ok('A2 同技能3級封頂', ev(`skR('suiri','tameike')`)===3, ev(`skR('suiri','tameike')`));
+  ev(`skAlloc('suiri','shinden'); skAlloc('suiri','shinden');`);
+  ok('A3 T1滿5後中傳可修', (ev(`skAlloc('suiri','teibou')`), ev(`skR('suiri','teibou')`))===1, '');
+  ok('A4 奧傳仍鎖', (ev(`skAlloc('suiri','shuun')`), ev(`skR('suiri','shuun')`))===0, '');
   ev('S.suiri = 12;');
-  ev(`skPickModal('suiri')`);
-  clickBy(/堤防強化/);   // teibou 3
-  clickBy(/水車小屋/); clickBy(/水車小屋/);   // T2 spent=5
-  ok('A7 T2滿5→T3解鎖', /T3・舟運堀川|T3・二毛作/.test($('modalChoices').textContent), '');
-  clickBy(/舟運堀川/); clickBy(/舟運堀川/);
-  ok('A8 12點配畢(T3舟運2/2)', ev(`skR('suiri','shuun')`)===2 && ev(`skUnspent('suiri')`)===0, '');
+  ev(`skAlloc('suiri','teibou'); skAlloc('suiri','teibou'); skAlloc('suiri','suisha'); skAlloc('suiri','suisha');`);
+  ok('A5 中傳滿5→奧傳開', (ev(`skAlloc('suiri','shuun')`), ev(`skR('suiri','shuun')`))===1, '');
+  ev(`skAlloc('suiri','shuun'); skAlloc('suiri','shuun');`);   // 第3次:T3上限2
+  ok('A6 奧傳2級封頂+12點配畢', ev(`skR('suiri','shuun')`)===2 && ev(`skUnspent('suiri')`)===0, '');
+  ok('A7 樹HTML含初傳/中傳/奧傳且無T字樣', (()=>{const h=ev(`skTreeHtml('suiri')`);return /初傳/.test(h)&&/中傳/.test(h)&&/奧傳/.test(h)&&!/T1|T2|T3/.test(h);})(), '');
+  ok('A8 配畢後節點無可點(skcan)', !/skcan/.test(ev(`skTreeHtml('suiri')`)), '');
 }
 
 // ── B. 公式掛鉤 ──
