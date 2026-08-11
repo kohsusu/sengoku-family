@@ -229,6 +229,9 @@
   canvas.face.k-ronin{border-color:#5a6a8e}
   canvas.face.k-fudai{border-color:#8a7248}
   /* 戰況 HUD */
+  #modalHud .kstin{width:46px;font-size:12px;padding:1px 2px;border:1px solid var(--line);border-radius:4px;background:#fffdf6;text-align:right}
+  #modalHud select.ksgsel{font-size:12px;max-width:110px;border:1px solid var(--line);border-radius:4px;background:#fffdf6}
+  #modalHud .kspow{color:#8a2a1e;font-weight:bold}
   #modalHud .sktitle{font-weight:bold;margin:8px 0 2px;font-size:15px}
   #modalHud .skun{color:#a02818;margin-left:8px;font-size:12px;font-weight:normal}
   #modalHud .sktier{margin:8px 0 4px;color:#7a6a4f;font-size:12px;border-bottom:1px dashed var(--line);padding-bottom:2px}
@@ -5156,50 +5159,101 @@ function ksPlanModal(){
       `軍議之要有三:誰領哪一備、從屬眾出多少兵、各備列於何處。\n`+
       `兵種與大將的專精相合,戰力方能盡出。`,
     choices:[
-      {label:'布陣へ——決定各備之位', fn:()=>{ ksDeployModal(); }},
+      {label:'布陣へ——決定各備之位', fn:()=>{
+        const bad = KS.my.find(x=>x.kind==='family' && ksTotal(x) < 10);
+        if(bad){ log(`${bad.name}兵不足十人,無以成備——請調兵或併入他備。`,'bad'); ksPlanModal(); return; }
+        ksDeployModal(); }},
       {label:'罷兵不戰', sub:'此番作罷', fn:()=>{ KS = null; }}
     ]});
   pumpModal();
 }
+function ksFoeMix(){   // 敵全軍混成(戰力試算的假想對手)
+  const m = {ashigaru:0, yumi:0, kiba:0, teppo:0};
+  (KS ? KS.foe : []).forEach(s2 => U_KEYS.forEach(k => { m[k] += s2.army[k]||0; }));
+  return armyTotal(m) > 0 ? m : {ashigaru:1, yumi:0, kiba:0, teppo:0};
+}
+function ksMyMix(){
+  const m = {ashigaru:0, yumi:0, kiba:0, teppo:0};
+  (KS ? KS.my : []).forEach(s2 => U_KEYS.forEach(k => { m[k] += s2.army[k]||0; }));
+  return armyTotal(m) > 0 ? m : {ashigaru:1, yumi:0, kiba:0, teppo:0};
+}
+const ksPow = (s2, foeMix) => ri(ksStrength(s2, 'charge', KS.ctx, foeMix));
 function ksPlanHud(){
   if(!KS) return '';
-  const fed = KS.my.reduce((a,s)=>a+ksTotal(s), 0);
-  const foeN = KS.foe.reduce((a,s)=>a+ksTotal(s), 0);
-  const bench = S.retainers.filter(r => (r.sick||0)===0 && !KS.my.some(s=>s.gen===r));
-  let h = `<table class="kstbl"><tr><th>備</th><th>大將</th><th>兵</th><th>適性</th><th></th></tr>`;
-  KS.my.forEach((s,i)=>{
-    const mul = aptMul(s.gen, s.army);
-    h += `<tr><td><b>${s.name}</b></td>`+
-      `<td><span class="ksgen">${s.gen.name}</span>${s.kind==='family'?`<br><span class="dim" style="font-size:11px">武${s.gen.bu}・${aptLabel(s.gen)||'—'}</span>`:''}</td>`+
-      `<td>${ksTotal(s)}<br><span class="dim" style="font-size:11px">${armyLabel(s.army)}</span></td>`+
-      `<td>${s.kind==='family'?`×${mul.toFixed(2)}`:'<span class="dim">與力</span>'}</td>`+
-      `<td>${s.kind==='family'
-        ? (i>0 && bench.length ? `<button class="ghost ksbtn" onclick="ksSwapGen(${i})">更易大將</button>` : '')
-        : `<button class="ghost ksbtn" onclick="ksCycleLevy(${i})">${['免除','半數','傾力'][s.levy]}</button>`}</td></tr>`;
+  const fed = KS.my.reduce((a,s2)=>a+ksTotal(s2), 0);
+  const foeN = KS.foe.reduce((a,s2)=>a+ksTotal(s2), 0);
+  const foeMix = ksFoeMix(), myMix = ksMyMix();
+  const myPow = KS.my.reduce((a,s2)=>a+ksPow(s2, foeMix), 0);
+  const foePow = KS.foe.reduce((a,s2)=>a+ksPow(s2, myMix), 0);
+  const fam = KS.my.filter(x=>x.kind==='family');
+  const usedGen = fam.map(x=>x.gen);
+  // 各兵種剩餘(留守)兵
+  const left = {};
+  U_KEYS.forEach(k=>{ left[k] = Math.max(0, (S.army[k]||0) - fam.reduce((a,x)=>a+(x.army[k]||0), 0)); });
+  const UN = {ashigaru:'足輕', yumi:'弓', kiba:'騎', teppo:'銃'};
+  let h = `<table class="kstbl"><tr><th>備</th><th>大將</th><th>${UN.ashigaru}</th><th>${UN.yumi}</th><th>${UN.kiba}</th><th>${UN.teppo}</th><th>戰力</th></tr>`;
+  KS.my.forEach((s2,i)=>{
+    if(s2.kind === 'family'){
+      const pool = [S.retainers[0], ...activeR().slice(1).filter(r=>(r.sick||0)===0)]
+        .filter(r => r === s2.gen || !usedGen.includes(r));
+      const sel = i === 0
+        ? `<span class="ksgen">${s2.gen.name}</span>`
+        : `<select class="ksgsel" onchange="ksSetGen(${i}, this.value)">` +
+          pool.filter(r=>r !== S.retainers[0]).map(r =>
+            `<option value="${S.retainers.indexOf(r)}"${r===s2.gen?' selected':''}>${r.name}</option>`).join('') + `</select>`;
+      h += `<tr><td><b>${s2.name}</b></td>`+
+        `<td>${sel}<br><span class="dim" style="font-size:11px">武${s2.gen.bu}・${aptLabel(s2.gen)||'—'}・適性×${aptMul(s2.gen, s2.army).toFixed(2)}</span></td>`+
+        U_KEYS.map(k=>`<td><input class="kstin" type="number" min="0" value="${s2.army[k]||0}" onchange="ksSetTroop(${i},'${k}',this.value)"></td>`).join('')+
+        `<td class="kspow">${ksPow(s2, foeMix)}</td></tr>`;
+    }else{
+      h += `<tr><td><b>${s2.name}</b></td>`+
+        `<td><span class="ksgen">${s2.gen.name}</span><br><button class="ghost ksbtn" onclick="ksCycleLevy(${i})">${['免除','半數','傾力'][s2.levy]}</button></td>`+
+        U_KEYS.map(k=>`<td class="dim">${s2.army[k]||0}</td>`).join('')+
+        `<td class="kspow">${ksPow(s2, foeMix)}</td></tr>`;
+    }
   });
-  h += `</table><div class="kssum">我軍合計 <b>${fed}</b> 兵(兵糧 ${fed} 石,現有 ${ri(S.rice)})　`+
-    `敵軍 <b>${foeN}</b> 兵・${KS.foe.length} 備</div>`;
-  h += `<table class="kstbl"><tr><th>敵備</th><th>敵將</th><th>兵</th></tr>`;
-  KS.foe.forEach(s=>{
-    h += `<tr class="foe"><td>${s.name}</td><td><span class="ksgen">${s.gen.name}</span>`+
-      `<br><span class="dim" style="font-size:11px">武${s.gen.bu}・智${s.gen.chi}</span></td>`+
-      `<td>${ksTotal(s)}<br><span class="dim" style="font-size:11px">${armyLabel(s.army)}</span></td></tr>`;
+  h += `<tr><td class="dim">留守</td><td class="dim" style="font-size:11px">未帶出之兵(省兵糧)</td>`+
+    U_KEYS.map(k=>`<td class="dim">${left[k]}</td>`).join('')+
+    `<td><button class="ghost ksbtn" onclick="ksResetAllot()" title="依大將適性重新自動分兵">自動</button></td></tr>`;
+  h += `</table><div class="kssum">我軍 <b>${fed}</b> 兵・戰力 <b class="kspow">${myPow}</b>(兵糧 ${fed} 石,現有 ${ri(S.rice)})　`+
+    `敵軍 <b>${foeN}</b> 兵・戰力 <b>${foePow}</b></div>`;
+  h += `<table class="kstbl"><tr><th>敵備</th><th>敵將</th><th>兵</th><th>戰力</th></tr>`;
+  KS.foe.forEach(s2=>{
+    h += `<tr class="foe"><td>${s2.name}</td><td><span class="ksgen">${s2.gen.name}</span>`+
+      `<br><span class="dim" style="font-size:11px">武${s2.gen.bu}・智${s2.gen.chi}</span></td>`+
+      `<td>${ksTotal(s2)}<br><span class="dim" style="font-size:11px">${armyLabel(s2.army)}</span></td>`+
+      `<td>${ksPow(s2, myMix)}</td></tr>`;
   });
-  return h + `</table>`;
+  return h + `</table><div class="dim" style="font-size:11px">戰力=對敵混成之期望值(兵種相剋×武力×適性×陣位)。手動填數可少帶兵省糧;「自動」依適性重配。</div>`;
 }
-function ksSwapGen(i){
+function ksSetGen(i, ridx){
   if(!KS) return;
-  const s = KS.my[i];
-  if(!s || s.kind !== 'family') return;
-  const pool = activeR().filter(r => (r.sick||0)===0 && r !== S.retainers[0]);
-  const used = KS.my.filter(x=>x.kind==='family').map(x=>x.gen);
-  const free = pool.filter(r => !used.includes(r) || r === s.gen);
-  if(free.length < 2) return;
-  const at = free.indexOf(s.gen);
-  s.gen = ensureApt(free[(at+1) % free.length]);
+  const s2 = KS.my[i];
+  const r = S.retainers[+ridx];
+  if(!s2 || s2.kind !== 'family' || !r || (r.sick||0) > 0) return;
+  if(KS.my.some(x => x !== s2 && x.kind === 'family' && x.gen === r)) return;
+  s2.gen = ensureApt(r);
+  if(!KS.manualAllot) ksAllot(KS.my.filter(x=>x.kind==='family'), S.army);
+  $('modalHud').innerHTML = ksPlanHud();
+}
+function ksSetTroop(i, k, v){
+  if(!KS) return;
+  const s2 = KS.my[i];
+  if(!s2 || s2.kind !== 'family') return;
+  const others = KS.my.filter(x => x !== s2 && x.kind === 'family')
+    .reduce((a,x)=>a+(x.army[k]||0), 0);
+  const avail = Math.max(0, (S.army[k]||0) - others);
+  s2.army[k] = clamp(ri(+v || 0), 0, avail);
+  KS.manualAllot = true;
+  $('modalHud').innerHTML = ksPlanHud();
+}
+function ksResetAllot(){
+  if(!KS) return;
+  KS.manualAllot = false;
   ksAllot(KS.my.filter(x=>x.kind==='family'), S.army);
   $('modalHud').innerHTML = ksPlanHud();
 }
+function ksSwapGen(i){ /* 舊介面保留空殼(改由下拉選任) */ }
 function ksCycleLevy(i){
   if(!KS) return;
   const s = KS.my[i];
