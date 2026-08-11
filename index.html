@@ -593,7 +593,7 @@ let modalQueue = [];
 
 function newState(famName, kamon, clan, mode, region){
   const st = {
-    v:24, famName, kamon: kamon||0, clanType: clan||'kokujin', region: region||'mikawa', warBoom:0, rumors:[], slain:{}, kuge:0, lordMarr:{}, holds:[],
+    v:24, famName, kamon: kamon||0, clanType: clan||'kokujin', region: region||'mikawa', warBoom:0, rumors:[], slain:{}, kuge:0, lordMarr:{}, holds:[], skSuiri:{}, skTrade:{},
     consorts:[],
     castles:{}, jinbure:null, kanjo:0, ando:0, yoriBoss:null, hiddenFields:0,
     debt:null, loan:null, intel:0, aggression:0, coalition:null, taishoId:null,
@@ -770,7 +770,7 @@ function solCap(){ // 兵力上限:寺社眾以門徒動員——民心是「動
 }
 function popCap(){ // 人口上限:土地養得起的人(約一石養一人),商路/寺內町/漁鹽補之
   let cap = S.kokudaka * 1.2;
-  cap += S.tradeLv * 60;                        // 商路運糧養人
+  cap += S.tradeLv * 25;                        // 商路運糧養人(12級制換算)
   cap += (S.rakuichi||0) * 30;                  // 樂市聚人
   if(S.clanType === 'temple') cap += S.minshin; // 寺內町門徒聚居
   if(S.clanType === 'suigun') cap += 100;       // 漁鹽之利
@@ -808,7 +808,7 @@ function bugyoResolve(b){   // 奉行職→當季實務
     case 'bugyo_kori':   return S.season===2 ? 'tonden' : S.season===3 ? 'hunt' : 'farm';
     case 'bugyo_kanjo':  return 'trade';
     case 'bugyo_gun':    return 'drill';
-    case 'bugyo_fushin': return (S.suiri||0) < 5 ? 'fushin' : 'shiro';
+    case 'bugyo_fushin': return (S.suiri||0) < 12 ? 'fushin' : 'shiro';
     default: return b;
   }
 }
@@ -1406,6 +1406,75 @@ function faceCanvas(p, size){
   return cv;
 }
 
+// ---------- 技能樹:治水(水利)・商政(商路) ----------
+// 各樹上限12級;每級得1點;同技能最多3級(T3為2);T1累計5點開T2,T2累計5點開T3
+const SKILLS = {
+  suiri: {
+    tameike: {t:1, name:'溜池普請',   max:3, desc:'收穫 +5%/級'},
+    shinden: {t:1, name:'新田開發',   max:3, desc:'屯田效率 +12%/級'},
+    kanbatsu:{t:1, name:'旱魃備え',   max:3, desc:'凶作年收穫係數 +0.04/級'},
+    teibou:  {t:2, name:'堤防強化',   max:3, desc:'梅雨水害 -20%/級;滿級=洪水年固若金湯反增民心威望'},
+    suisha:  {t:2, name:'水車小屋',   max:3, desc:'農務成效 +10%/級,歲末碾米工錢'},
+    yousui:  {t:2, name:'用水杖',     max:3, desc:'取得時民心 +2;私戰調停成算 +6%/級'},
+    shuun:   {t:3, name:'舟運堀川',   max:2, desc:'買米牙錢 -0.06/級;圍城日糧 -8%/級'},
+    nimou:   {t:3, name:'二毛作',     max:2, desc:'歲末人丁 +0.5%/級、石高自然微增'}
+  },
+  trade: {
+    bashaku: {t:1, name:'馬借・問屋', max:3, desc:'經商・廻船獲利 +8%/級'},
+    komeya:  {t:1, name:'米問屋直取引', max:3, desc:'賣米價 +4%/級,買米牙錢 -0.05/級'},
+    zayaku:  {t:1, name:'座役免除',   max:3, desc:'招攬流民成本 -10%/級;取得時民心 +1'},
+    kaido:   {t:2, name:'街道整備',   max:3, desc:'圍城日糧 -4%/級;過路商稅隨商路更豐'},
+    goyou:   {t:2, name:'御用商人',   max:3, desc:'御用金・官位奏請費 -6%/級'},
+    honai:   {t:2, name:'保內商人網', max:3, desc:'售米等恩義積累 +20%/級'},
+    karamono:{t:3, name:'唐物交易',   max:2, desc:'歲末機率購得唐物——大利、名物或走眼(賭博)'},
+    teppoya: {t:3, name:'鐵砲問屋',   max:2, desc:'歲末半價供銃補足鐵砲(每級上限+10挺/年)'}
+  }
+};
+const skR = (tree, key) => (((tree==='suiri' ? S.skSuiri : S.skTrade) || {})[key]) || 0;
+const skSpent = (tree, t) => {
+  const sk = (tree==='suiri' ? S.skSuiri : S.skTrade) || {};
+  return Object.keys(sk).reduce((a,k)=> a + ((SKILLS[tree][k] && SKILLS[tree][k].t === t) ? sk[k] : 0), 0);
+};
+const skUnspent = tree => Math.max(0, (tree==='suiri' ? (S.suiri||0) : (S.tradeLv||0)) - skSpent(tree,1) - skSpent(tree,2) - skSpent(tree,3));
+const skTierOpen = (tree, t) => t === 1 ? true : t === 2 ? skSpent(tree,1) >= 5 : skSpent(tree,2) >= 5;
+function skPickModal(tree){
+  if(!S || S.gameOver || skUnspent(tree) <= 0) return;
+  const pool = Object.entries(SKILLS[tree]).filter(([k,d])=> skTierOpen(tree, d.t) && skR(tree,k) < d.max);
+  if(!pool.length) return;
+  queueModal({
+    title:`📜 ${tree==='suiri' ? '治水の議' : '商政の議'}——擇一而修(餘 ${skUnspent(tree)} 點)`,
+    body:(tree==='suiri'
+      ? '水利普請有成,錢糧投於何處,家中各執一詞。\nT1 累計 5 級開 T2;T2 累計 5 級開 T3。'
+      : '商路既通,座商馬借各獻其策。\nT1 累計 5 級開 T2;T2 累計 5 級開 T3。'),
+    choices: pool.map(([k,d])=>({
+      label:`T${d.t}・${d.name}(${skR(tree,k)}/${d.max})`,
+      sub:d.desc,
+      fn:()=>{
+        const sk = tree==='suiri' ? (S.skSuiri = S.skSuiri || {}) : (S.skTrade = S.skTrade || {});
+        sk[k] = (sk[k]||0) + 1;
+        if(k === 'yousui') S.minshin = clamp(S.minshin + 2, 0, 100);
+        if(k === 'zayaku') S.minshin = clamp(S.minshin + 1, 0, 100);
+        log(`📜 ${d.name} 修至 ${sk[k]}/${d.max} 級。`, 'good');
+        save(); render();
+        if(skUnspent(tree) > 0) skPickModal(tree);   // 連點至配完(舊檔遷移一次補齊)
+      }
+    }))
+  });
+  pumpModal();
+}
+function skView(){
+  const part = tree => {
+    const nm = tree==='suiri' ? '🌊 治水' : '🛤 商政';
+    const lv = tree==='suiri' ? (S.suiri||0) : (S.tradeLv||0);
+    const rows = Object.entries(SKILLS[tree]).map(([k,d])=>
+      `　T${d.t} ${d.name} ${skR(tree,k)}/${d.max}${skR(tree,k)?'':'　'}${skTierOpen(tree,d.t)?'':'(未解鎖)'}`).join('\n');
+    return `${nm} ${lv}/12 級(未配點 ${skUnspent(tree)})\n`+
+      `　T2:${skTierOpen(tree,2)?'已開':'T1滿5開'}　T3:${skTierOpen(tree,3)?'已開':'T2滿5開'}\n${rows}`;
+  };
+  queueModal({ title:'📜 治水・商政技能', body: part('suiri') + '\n\n' + part('trade'),
+    choices:[{label:'領命', fn:()=>{ if(skUnspent('suiri')) skPickModal('suiri'); if(skUnspent('trade')) skPickModal('trade'); }}] });
+  pumpModal();
+}
 // ---------- 人物特性(隨機個性,影響玩法) ----------
 const TRAITS = {
   gouyuu:    {name:'剛勇',     desc:'戰場上勇不可當:戰功提升、討死率減半、私鬥更強。'},
@@ -1617,7 +1686,7 @@ const meiboLoyal  = () => S.prestige / 100;                       // 歲末忠�
 const meiboHold   = () => Math.min(S.prestige / 300, 0.30);      // 從屬眾維繫・勧誘(上限 +30%)
 const meiboKani   = () => clamp(1 - S.prestige/400, 0.6, 1);      // 官位獻金折扣
 const meiboEnvy   = () => Math.max(0, S.prestige - 90) * 0.25;    // 樹大招風:招忌之數
-const kaniCost    = lv => ri((lv === 1 ? 500 : 1200) * meiboKani() * (S.flags && S.flags.bakufuFall ? 1.5 : 1));   // 名分要有名聲撐;幕府亡後奏請無門,費用騰貴
+const kaniCost    = lv => ri((lv === 1 ? 500 : 1200) * meiboKani() * (S.flags && S.flags.bakufuFall ? 1.5 : 1) * (1 - skR('trade','goyou')*0.06));   // 名分要有名聲撐;幕府亡後奏請無門,費用騰貴
 function chooseKakun(isSuccession){
   const opts = Object.keys(KAKUN).map(k=>({
     label:`${KAKUN[k].name}${KAKUN[k].motto}`,
@@ -2737,7 +2806,7 @@ function processSiege(){
   const f = S.rivals.find(x=>x.id===sg.id);
   if(!f || !f.alive){ S.siege = null; return; }
   sg.seasons += 1;
-  const eat = ri(sg.sent * 1.2);
+  const eat = ri(sg.sent * 1.2 * (1 - skR('trade','kaido')*0.04 - skR('suiri','shuun')*0.08));
   S.rice = Math.max(0, S.rice - eat);
   if(S.season === 1) S.warLabor = (S.warLabor||0) + sg.sent;
   const lines = [`圍城第 ${sg.seasons} 季:陣中兵糧消耗 ${eat} 石。`];
@@ -3110,7 +3179,7 @@ function simRivals(lines){
               if(r2.w === tgt){
                 tgt.rel = clamp(tgt.rel+10,-100,100);
                 tgt.ltrust = clamp((tgt.ltrust!=null?tgt.ltrust:50)+8, 0, 100);
-                tgt.on = clamp((tgt.on||0)+12, 0, 100);
+                tgt.on = clamp((tgt.on||0)+ri(12*(1+skR('trade','honai')*0.2)), 0, 100);
                 addGrudge(agg, 'player', 18);
                 log(`與${fname(tgt)}合兵,大破${fname(agg)}於境上!折兵 ${myLoss},然${fname(tgt)}感恩戴德(關係 +10・恩義 +12)。`,'good');
               }else{
@@ -3121,7 +3190,7 @@ function simRivals(lines){
             }},
             {label:'調停', sub:`以威望折衝樽俎(需威望≥50;成則兩家息兵)`, fn:()=>{
               if(S.prestige < 50){ log('人微言輕,兩家不聽——戰事照舊。','bad'); skirmish(0); return; }
-              if(Math.random() < 0.75){
+              if(Math.random() < 0.75 + skR('suiri','yousui')*0.06){
                 tgt.rel = clamp(tgt.rel+5,-100,100);
                 agg.rel = clamp(agg.rel+3,-100,100);
                 S.prestige += 3;
@@ -4820,7 +4889,7 @@ function playerAppeal(f){
             + (f.lord && f.lord !== 'player' && (f.ltrust ?? 60) < 45 ? (45 - (f.ltrust ?? 60)) * 0.004 : 0);   // 對主家離心者,好挖
   if(t === '慕名') return onB + (S.kani||0)*0.07 + Math.min(S.prestige,150)/700 - (S.prestige < 40 ? 0.10 : 0);
   if(t === '慕強') return onB + clamp((S.soldiers - rSol(f))/600, -0.12, 0.15) - (playerWeakness().w >= 35 ? 0.10 : 0);
-  if(t === '重利') return onB + Math.min(S.money,3000)/20000 + (S.tradeLv||0)*0.015 + (S.rakuichi||0)*0.02;
+  if(t === '重利') return onB + Math.min(S.money,3000)/20000 + (S.tradeLv||0)*0.00625 + (S.rakuichi||0)*0.02;
   if(t === '戀鄉') return onB + (isMyNeighbor(f) ? 0.08 : -0.06) + ((f.marr || f.pact) ? 0.08 : 0);
   if(t === '一途') return onB + ((S.lords.imagawa && S.lords.imagawa.alive !== false) ? -0.15 : 0.05);
   if(t === '唯信') return onB + (S.minshin >= 75 ? 0.06 : -0.25);
@@ -7718,7 +7787,7 @@ function resolveTasks(){
       case 'tonden': {
         if(S.money < 5){ log(`${r.name}:資金不足,屯田未能進行。`,'bad'); break; }
         S.money -= 5;
-        const gain = ri(r.nai * 0.5 * Math.sqrt(1400 / Math.max(700, S.kokudaka)) * (1 + (S.suiri||0)*0.06) * eff);
+        const gain = ri(r.nai * 0.5 * Math.sqrt(1400 / Math.max(700, S.kokudaka)) * (1 + (S.suiri||0)*0.025 + skR('suiri','shinden')*0.12) * eff);
         S.kokudaka += gain;
         r.merit = (r.merit||0) + 2;
         log(`${r.name} 督導屯田,石高 +${gain}(現 ${S.kokudaka} 石)。${tired}${grow(r,'nai')}`);
@@ -7731,7 +7800,7 @@ function resolveTasks(){
       case 'farm': {
         const sf = S.season===3 ? 0 : (S.season===2 ? 0.5 : 1);
         if(sf === 0){ log(`${r.name}:冬季田事已歇,農務無所施展。`,'bad'); break; }
-        const gain = r.nai * 0.1 * sf * eff;
+        const gain = r.nai * 0.1 * sf * eff * (1 + skR('suiri','suisha')*0.10);
         S.farmWork += gain;
         r.merit = (r.merit||0) + 2;
         log(`${r.name} 勤於農務,今年收成預估 +${gain.toFixed(1)}%。${tired}${grow(r,'nai')}`);
@@ -7796,18 +7865,19 @@ function resolveTasks(){
         break;
       }
       case 'trade': {
-        const gain = ri((10 + (r.chi*0.34 + r.nai*0.16)) * (1 + S.tradeLv*0.2) * (1 + S.kokudaka/4000) * eff);
+        const gain = ri((10 + (r.chi*0.34 + r.nai*0.16)) * (1 + S.tradeLv*0.085 + skR('trade','bashaku')*0.08) * (1 + S.kokudaka/4000) * eff);
         S.money += gain;
         r.merit = (r.merit||0) + 2;
         log(`${r.name} 販運經商,獲利 ${gain} 貫。${tired}${grow(r,'chi')}`);
-        if(Math.random() < Math.max(0.02, 0.10 + r.chi*0.001 - S.tradeLv*0.03)){
+        if(S.tradeLv < 12 && Math.random() < Math.max(0.02, 0.10 + r.chi*0.001 - S.tradeLv*0.0125)){
           S.tradeLv += 1; r.merit += 4;
-          log(`${r.name} 打通了新商路!商路等級 ${S.tradeLv}(經商收入提升),記大功。`,'good');
+          log(`${r.name} 打通了新商路!商路 ${S.tradeLv} 級——商政之議可擇新技,記大功。`,'good');
+          skPickModal('trade');
         }
         break;
       }
       case 'fushin': {
-        if(S.suiri >= 5){ log(`${r.name}:領內水利已臻完善(上限 5 級),無須再修。`); break; }
+        if(S.suiri >= 12){ log(`${r.name}:領內水利已臻完善(上限 12 級),無須再修。`); break; }
         if(S.money < 15){ log(`${r.name}:資金不足,普請未能動工。`,'bad'); break; }
         S.money -= 15;
         r._fushin = (r._fushin || 0) + r.nai * eff;
@@ -7815,7 +7885,8 @@ function resolveTasks(){
         if(r._fushin >= 100){
           r._fushin -= 100;
           S.suiri += 1; r.merit += 5;
-          log(`${r.name} 主持的水利普請竣工!水利 ${S.suiri} 級(收穫 +${S.suiri*5}%),記大功。`,'good');
+          log(`${r.name} 主持的水利普請竣工!水利 ${S.suiri} 級——治水之議可擇新技,記大功。`,'good');
+          skPickModal('suiri');
         }else{
           log(`${r.name} 督造水利,工程進度 ${ri(r._fushin)}%。${tired}${grow(r,'nai')}`);
         }
@@ -7872,13 +7943,14 @@ function resolveTasks(){
           S.money = Math.max(0, S.money - lost);
           log(`${r.name} 的船隊遭遇風浪!貨物盡失(錢 -${lost})。`,'bad');
         }else{
-          const gain = ri((14 + r.chi*0.28) * (1 + S.tradeLv*0.2) * (1 + (S.ships||0)*0.15) * eff);
+          const gain = ri((14 + r.chi*0.28) * (1 + S.tradeLv*0.085 + skR('trade','bashaku')*0.08) * (1 + (S.ships||0)*0.15) * eff);
           S.money += gain;
           r.merit = (r.merit||0) + 2;
           log(`${r.name} 廻船歸港,滿載而歸(錢 +${gain})。${tired}${grow(r,'chi')}`);
-          if(Math.random() < Math.max(0.02, 0.10 - S.tradeLv*0.02)){
+          if(S.tradeLv < 12 && Math.random() < Math.max(0.02, 0.10 - S.tradeLv*0.0084)){
             S.tradeLv += 1; r.merit += 4;
-            log(`${r.name} 開闢新航路!商路 ${S.tradeLv} 級。`,'good');
+            log(`${r.name} 開闢新航路!商路 ${S.tradeLv} 級——商政之議可擇新技。`,'good');
+            skPickModal('trade');
           }
         }
         break;
@@ -7987,7 +8059,8 @@ function autumnHarvest(){
   const laborNeed = S.kokudaka / 2;                       // 每人約耕二石
   const away = (S.warLabor || 0) * 3;                     // 動員一兵,連帶輜重人夫三人離田
   const laborF = clamp((S.pop - away) / laborNeed, 0, 1);
-  const total = ri(S.kokudaka * S.weather.f * (1 + S.farmWork/100) * (1 + S.suiri*0.05) * laborF);
+  const wf = S.weather.f < 0.9 ? Math.min(1, S.weather.f + skR('suiri','kanbatsu')*0.04) : S.weather.f;   // 旱魃備え
+  const total = ri(S.kokudaka * wf * (1 + S.farmWork/100) * (1 + S.suiri*0.021 + skR('suiri','tameike')*0.05) * laborF);
   const taken = ri(total * S.taxRate);
   S.rice += taken;
   const w = S.weather;
@@ -8050,6 +8123,29 @@ function winterSettle(){
       lines.push(`⛏ 掘遍坑道一無所獲——山金之利,終究是賭。`);
     }
   }
+  // 📜 技能樹歲末:水車碾米/二毛作/唐物交易/鐵砲問屋+未配點提醒
+  {
+    const rSuisha = skR('suiri','suisha');
+    if(rSuisha){ const mz = ri(S.pop * 0.004 * rSuisha);
+      if(mz > 0){ S.money += mz; if(Math.random() < 0.4) lines.push(`水車小屋碾米搗麥,得工錢 ${mz} 貫。`); } }
+    const rNimou = skR('suiri','nimou');
+    if(rNimou){ const pg = ri(S.pop * 0.005 * rNimou); S.pop = Math.min(popCap(), S.pop + pg);
+      const kg = ri(S.kokudaka * 0.0015 * rNimou); S.kokudaka += kg;
+      if(Math.random() < 0.4) lines.push(`二毛作之利:人丁 +${pg}、石高 +${kg}。`); }
+    const rKara = skR('trade','karamono');
+    if(rKara && S.money >= 25 && Math.random() < 0.22 * rKara){
+      const roll = Math.random();
+      if(roll < 0.4){ const g2 = ri(50 + Math.random() * 90); S.money += g2; lines.push(`🏺 唐物商船靠岸,轉手青瓷獲利 ${g2} 貫!`); }
+      else if(roll < 0.7){ S.prestige += 3; lines.push(`🏺 購得唐物名物,獻於貴人——威望 +3。`); }
+      else { S.money -= 20; lines.push(`🏺 重金購入的「唐物」竟是贗品——折了 20 貫,商人已遁。`); }
+    }
+    const rTep = skR('trade','teppoya');
+    if(rTep){ const want = ri(Math.min(10 * rTep, Math.max(0, (S.army.ashigaru||0) * 0.08 - (S.army.teppo||0))));
+      if(want > 0 && S.money >= want * 3){ S.money -= want * 3; S.army.teppo += want; S.soldiers = armyTotal(S.army);
+        lines.push(`鐵砲問屋如約供銃 ${want} 挺(半價 ${want * 3} 貫)。`); } }
+    if(skUnspent('suiri') > 0) skPickModal('suiri');
+    if(skUnspent('trade') > 0) skPickModal('trade');
+  }
   // 📜 德政請願:連年凶作,領民乞求蠲免(戰國的一揆多為德政一揆)
   S.leanRun = (S.weather && S.weather.f < 0.85) ? (S.leanRun||0) + 1 : 0;
   if(S.tokuseiCd) S.tokuseiCd -= 1;
@@ -8106,7 +8202,7 @@ function winterSettle(){
   // 民心:向「治績基準線」回歸(不再是只進不退的一次性衝頂)
   let base = 50
     + (S.taxRate <= 0.3 ? 15 : S.taxRate >= 0.5 ? -15 : 0)
-    + Math.min(10, (S.suiri||0) * 2)
+    + Math.min(10, (S.suiri||0) * 0.85)
     + (S.clanType === 'temple' ? 10 : 0)
     + (hasKakun('minpon') ? 8 : 0)
     + Math.min(6, (S.rakuichi||0) * 3)
@@ -9069,15 +9165,15 @@ const EVENTS = [
   { id:'kozui', w:2,
     make:()=>{
       if(S.season !== 1) return null;   // 梅雨在夏
-      if((S.suiri||0) >= 4) return { title:'梅雨大水——堤防之功',
-        body:`連日豪雨,河水暴漲!濁流拍岸之際,歷年普請的堤防巍然不動——\n領民登堤而觀,無不歎服。\n\n(水利 ${S.suiri} 級,固若金湯:民心 +3、威望 +2)`,
+      if(skR('suiri','teibou') >= 3) return { title:'梅雨大水——堤防之功',
+        body:`連日豪雨,河水暴漲!濁流拍岸之際,歷年普請的堤防巍然不動——\n領民登堤而觀,無不歎服。\n\n(堤防強化滿級,固若金湯:民心 +3、威望 +2)`,
         choices:[{label:'仁政之功', fn:()=>{ S.minshin = clamp(S.minshin+3,0,100); gainPrestige(2);
           log('大水無損領內分毫——堤防普請之功,民皆頌之。','good'); }}]};
-      const dmgR = 0.10 * (1 - (S.suiri||0) * 0.18);
+      const dmgR = Math.max(0, 0.10 * (1 - (S.suiri||0) * 0.04 - skR('suiri','teibou') * 0.20));
       const dmg = ri(S.kokudaka * dmgR);
       return { title:'梅雨大水!',
         body:`連日豪雨,河堤潰決!濁流漫田,秧苗盡沒……\n\n田畝流失 ${dmg} 石、民心 -4。`+
-          ((S.suiri||0) > 0 ? `\n(水利 ${S.suiri} 級,已擋下部分洪勢——若至 4 級可保無虞)` : `\n(全無水利普請,洪水如入無人之境)`),
+          ((S.suiri||0) > 0 ? `\n(水利 ${S.suiri} 級,已擋下部分洪勢——「堤防強化」滿級可保無虞)` : `\n(全無水利普請,洪水如入無人之境)`),
         choices:[{label:'搶修災田', fn:()=>{
           S.kokudaka = Math.max(100, S.kokudaka - dmg);
           S.minshin = clamp(S.minshin - 4, 0, 100);
@@ -9126,7 +9222,7 @@ function endSeason(){
     const fuse = ri(S.minshin * 0.15);
     if(fuse > 0){ S.money += fuse; log(`門徒布施 ${fuse} 貫(民心 ${S.minshin})。`); }
   } else if(S.clanType === 'suigun'){
-    const toll = 5 + S.tradeLv*2;
+    const toll = 5 + ri(S.tradeLv * (0.85 + skR('trade','kaido')*0.35));
     S.money += toll;
     log(`湊之關錢入帳 ${toll} 貫。`);
   }
@@ -9206,7 +9302,7 @@ function render(){
     `<span class="res ${S.minshin<25?'warn':''}">民心 <b>${S.minshin}</b>${S.minshin<25?' ⚠':''}</span>`+
     (S.lords ? `<span class="res">${S.isDaimyo ? '⛩ <b style="color:#ffd98a">大名</b>' : `臣從 <b>${S.allegiance ? LORD_META[S.allegiance].name+'家' : '─獨立─'}</b>`}</span>` : '')+
     ((S.kani||0) > 0 ? `<span class="res">官位 <b>${kaniLabel()}</b></span>` : '')+
-    `<span class="res">水利 <b>${S.suiri}</b> 商路 <b>${S.tradeLv}</b>${S.fort?` 城 <b>${S.fort}</b>`:''}${S.rakuichi?` 樂市 <b>${S.rakuichi}</b>`:''}${S.ships?` 船 <b>${S.ships}</b>`:''}</span>`+
+    `<span class="res" style="cursor:pointer" onclick="skView()" title="點看治水・商政技能樹">水利 <b>${S.suiri}</b>${skUnspent('suiri')?'●':''} 商路 <b>${S.tradeLv}</b>${skUnspent('trade')?'●':''}${S.fort?` 城 <b>${S.fort}</b>`:''}${S.rakuichi?` 樂市 <b>${S.rakuichi}</b>`:''}${S.ships?` 船 <b>${S.ships}</b>`:''}</span>`+
     (S.farmWork>0?`<span class="res">農務 <b>+${S.farmWork.toFixed(0)}%</b></span>`:'');
   { const kc = $('kamonTop').getContext('2d');
     KAMON[S.kamon||0].draw(kc, 11, 11, 9.5, '#ffd98a', '#3a2f24'); }
@@ -9452,8 +9548,8 @@ function boshuCost(){
   const n = S.boshu || 0;                       // 本年已招募次數 → 成本遞增
   const f = 1 + n * 0.6;
   return {   // 領地越大,招徠安置的開銷越重
-    money: ri((40 + S.pop*0.05) * f * (S.clanType==='merchant' ? 0.75 : 1)),
-    rice:  ri((60 + S.pop*0.08) * f)
+    money: ri((40 + S.pop*0.05) * f * (S.clanType==='merchant' ? 0.75 : 1) * (1 - skR('trade','zayaku')*0.10)),
+    rice:  ri((60 + S.pop*0.08) * f * (1 - skR('trade','zayaku')*0.10))
   };
 }
 function boshuGain(){
@@ -10721,7 +10817,9 @@ $('btnReset').onclick = () => {
 // 米市:數量自選(50/200/500/1000/全部)
 function riceTradeModal(mode){
   const rate = riceRate();
-  const cap = mode==='sell' ? Math.floor(S.rice) : Math.floor(S.money / (rate*1.25));
+  const buyMul = Math.max(1.0, 1.25 - skR('trade','komeya')*0.05 - skR('suiri','shuun')*0.06);   // 米問屋直取引+舟運堀川
+  const sellMul = 1 + skR('trade','komeya')*0.04;
+  const cap = mode==='sell' ? Math.floor(S.rice) : Math.floor(S.money / (rate*buyMul));
   const tiers = [50, 200, 500, 1000, cap];
   const seen = new Set(), ch = [];
   for(const q of tiers){
@@ -10729,14 +10827,14 @@ function riceTradeModal(mode){
     if(amt < 50 || amt > cap || seen.has(amt)) continue;
     seen.add(amt);
     if(mode==='sell'){
-      const gain = ri(amt * rate);
+      const gain = ri(amt * rate * sellMul);
       ch.push({label:`賣 ${amt} 石`, sub:`得 ${gain} 貫${amt===cap?'(傾倉)':''}`, fn:()=>{
         if(S.rice < amt) return;
         S.rice -= amt; S.money += gain;
         log(`市場賣米 ${amt} 石,得 ${gain} 貫。`); save(); render();
       }});
     }else{
-      const cost = ri(amt * rate * 1.25);
+      const cost = ri(amt * rate * buyMul);
       ch.push({label:`買 ${amt} 石`, sub:`花 ${cost} 貫${amt===cap?'(傾囊)':''}`, fn:()=>{
         if(S.money < cost) return;
         S.money -= cost; S.rice += amt;
@@ -10753,7 +10851,7 @@ function riceTradeModal(mode){
 }
 $('btnSell').onclick = () => { if(S.rice >= 50) riceTradeModal('sell'); };
 // 獻上御用金:重複可為,價碼遞增——後期富餘之錢的正當去處
-const kugeCost = () => ri(600 * (1 + (S.kuge||0) * 0.55));
+const kugeCost = () => ri(600 * (1 + (S.kuge||0) * 0.55) * (1 - skR('trade','goyou')*0.06));
 $('btnMine').onclick = () => {
   if(S.region !== 'shinano' || (S.mine||0) >= 3) return;
   const mc = 200 * ((S.mine||0) + 1);
