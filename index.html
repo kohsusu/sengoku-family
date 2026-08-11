@@ -1952,9 +1952,9 @@ function simRivalSeason(){
       case 'nomu':   f.koku = Math.min(rivalKokuCap(), f.koku + ri(f.koku*0.0025 + 1)); break;
       case 'tonden': f.koku = Math.min(rivalKokuCap(), f.koku + ri(nai*0.16*Math.sqrt(1400/Math.max(700,f.koku)))); break;
       case 'drill': {
-        const cap = ri(f.koku*0.16);
+        const cap = ri(f.koku*0.18*(1+(f.fort||0)*0.03));
         if(f.money >= 25 && f.sol < cap){ f.money -= 25;
-          f.sol = Math.min(cap, f.sol + ri(3 + f.koku/600 + (mB ? mB.bu*0.04 : 0))); }
+          f.sol = Math.min(cap, f.sol + ri((4 + f.koku/450 + (mB ? mB.bu*0.04 : 0)) * (S.year>=1570?1.4:1))); }
         break; }
       case 'trade':  f.money += ri(8 + f.koku*0.012*(f.clanKind==='merchant'?1.6:1)); break;
       case 'fushin': {
@@ -2000,6 +2000,28 @@ function simRivalActions(lines){
           lines.push(`${fname(f)}延攬浪人 ${m.name}(武${m.bu} 政${m.nai} 智${m.chi})入幕。`);
       }
     }
+    // ── 年貢餘剩:眾的歲入(石高的殘餘化為錢,商人更善生財)——沒錢什麼都養不起 ──
+    f.money = (f.money||0) + ri(f.koku * 0.02 * (f.clanKind==='merchant' ? 1.6 : 1));
+    // ── 兵農未分離:領民即兵源——兵力向石高一成一自然回復(不花錢的民兵底線) ──
+    {
+      const floor2 = ri(f.koku * 0.11);
+      if((f.sol||0) < floor2) f.sol = Math.min(floor2, (f.sol||0) + ri(3 + f.koku * 0.01));
+    }
+    // ── 常募:亂世之中無事的眾也悄悄補兵(兵低於承載七成→歲入一分養兵;受脅者加倍) ──
+    {
+      const cap2 = ri(f.koku * 0.18 * (1 + (f.fort||0)*0.03));
+      if(f.sol < cap2 * 0.7 && f.money >= 18){
+        const nb = neighborsOf(f).filter(x=>x.alive && rGrudge(f, x.id) + rGrudge(x, f.id) > 0);
+        const threat = nb.some(x=> rSol(x) > rSol(f) * 1.5);
+        const spend = Math.min(ri(f.money * (threat ? 0.32 : 0.16)), threat ? 200 : 110);
+        const n2 = ri(spend / 7 * ((f.persona==='武斷'||f.persona==='海賊') ? 1.25 : 1));
+        if(n2 > 0){
+          f.money -= spend;
+          f.sol = Math.min(cap2, (f.sol||0) + n2);
+          if(threat && Math.random() < 0.25) lines.push(`${fname(f)}見鄰家勢大,傾財募兵 ${n2} 人(兵力 ${f.sol})——山雨欲來。`);
+        }
+      }
+    }
     // ── 方針到期或未定則重新評定(約四年一議) ──
     if(!f.plan || S.year - f.plan.since >= 4) rivalPlan(f, lines);
     const P = f.plan.type;
@@ -2013,7 +2035,7 @@ function simRivalActions(lines){
       if(g > 30) lines.push(`${fname(f)}投錢 ${spend} 貫開墾買田(石高 +${g})。`);
     }else if(P === 'kyohei' && f.money >= 50){
       const spend = Math.min(ri(f.money*0.7), 360), n = ri(spend/6);
-      f.money -= spend; f.sol = Math.min(ri(f.koku*0.16), f.sol + n);   // 兵源以領民為限
+      f.money -= spend; f.sol = Math.min(ri(f.koku*0.18*(1+(f.fort||0)*0.03)), f.sol + n);   // 兵源以領民為限
       if(n > 12) lines.push(`${fname(f)}廣募兵員 ${n} 人(兵力 ${f.sol})。`);
     }else if(P === 'chikujo'){
       const cost = FORT_COST(f.fort||0);
