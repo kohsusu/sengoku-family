@@ -8021,15 +8021,27 @@ function winterSettle(){
     S.soldiers -= lost; S.rice = 0;
     lines.push(`⚠ 存糧見底!${lost} 名士卒逃散。`);
   }
-  // ⛏ 礦山(信濃山金):歲末出金,偶有山崩
+  // ⛏ 礦山(信濃山金):掘礦是賭博——有挖到才有報酬(期望值與舊保底制持平,但大起大落)
   if(S.mine){
     if(Math.random() < 0.08){
       S.minshin = clamp(S.minshin - 3, 0, 100);
       lines.push(`⛏ 山崩!礦洞埋没,今歲顆粒無收——礦夫家小哭聲不絕(民心 -3)。`);
+    }else if(Math.random() < 0.36 + S.mine * 0.02){          // 出礦判定:級越高,礦脈略易尋(期望值貼齊舊保底制)
+      if(Math.random() < 0.05){                              // 大金脈!
+        const gold = ri(S.mine * (90 + Math.random() * 60));
+        S.money += gold; S.prestige += 2;
+        lines.push(`⛏💰 大金脈!礦夫鑿穿岩層,金光迸出——出金 ${gold} 貫!山國之富,天下風聞(威望 +2)。`);
+      }else{
+        const gold = ri(S.mine * (48 + Math.random() * 38));
+        S.money += gold;
+        lines.push(`⛏ 掘中礦脈!山金掘り出金 ${gold} 貫(礦山 ${S.mine} 級)。`);
+      }
+    }else if(Math.random() < 0.2){
+      const dust = ri(3 + Math.random() * 5);
+      S.money += dust;
+      lines.push(`⛏ 今歲礦脈杳然,僅淘得砂金 ${dust} 貫——礦夫望山興嘆。`);
     }else{
-      const gold = ri(S.mine * (18 + Math.random() * 22));
-      S.money += gold;
-      lines.push(`⛏ 山金掘り出金 ${gold} 貫(礦山 ${S.mine} 級)。`);
+      lines.push(`⛏ 掘遍坑道一無所獲——山金之利,終究是賭。`);
     }
   }
   // 📜 德政請願:連年凶作,領民乞求蠲免(戰國的一揆多為德政一揆)
@@ -9278,7 +9290,7 @@ function render(){
           const mc = 200 * ((S.mine||0) + 1);
           bm.disabled = S.gameOver || (S.mine||0) >= 3 || S.money < mc;
           bm.textContent = (S.mine||0) >= 3 ? `⛏ 礦山 3 級(極)` : `⛏ 山金掘り(${mc}貫)`;
-          bm.title = `信濃山國之利:開掘金山(現 ${S.mine||0} 級,最高 3)。每級歲末出金約 18~40 貫,偶有山崩。`;
+          bm.title = `信濃山國之利:開掘金山(現 ${S.mine||0} 級,最高 3)。掘礦是賭博:歲末約 ${36+((S.mine||0)+1)*2}% 機率掘中礦脈(每級 48~86 貫),偶見大金脈一夜暴富,亦偶有山崩。`;
         }
       }
     }
