@@ -72,13 +72,13 @@
   #dateBox{font-size:20px;font-weight:bold;text-align:center;letter-spacing:2px}
   #dateBox .era{color:var(--accent);}
   #dateBox .seasonTag{display:inline-block;margin-left:8px;font-size:14px;background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:1px 10px;vertical-align:middle}
-  .retainer{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed var(--line)}
+  .retainer{display:flex;flex-wrap:wrap;align-items:center;gap:3px 8px;padding:7px 4px;border-bottom:1px dashed var(--line)}
   .retainer:last-child{border-bottom:none}
   .retainer canvas{flex:0 0 auto;margin-right:2px}
-  .retainer .rname{width:88px;font-weight:bold;font-size:14px;cursor:pointer}
+  .retainer .rname{min-width:88px;font-weight:bold;font-size:14px;cursor:pointer}
   .retainer .rname:hover{color:var(--accent)}
   .retainer .rname small{display:block;font-weight:normal;color:var(--ink2);font-size:11px}
-  .retainer .rstats{font-size:11px;color:var(--ink2);width:98px;line-height:1.5}
+  .retainer .rstats{font-size:11px;color:var(--ink2);flex:1;min-width:150px;text-align:right;line-height:1.5}
   .loyLow{color:var(--bad);font-weight:bold}
   .staLow{color:#c07a2e;font-weight:bold}
   .rivalRow{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:13px;padding:3px 2px;border-bottom:1px dashed var(--line);cursor:pointer}
@@ -87,7 +87,7 @@
   .rivalRow.me{background:#f7edd6;cursor:default;border-radius:4px}
   .rivalRow .rsub{color:var(--ink2);font-size:12px}
   #kamonTop{vertical-align:-4px;margin-right:5px}
-  .retainer select{flex:1}
+  .retainer select{flex:1 0 100%;margin-top:1px}
   .cardTitle{font-size:14px;font-weight:bold;border-left:4px solid var(--accent);padding-left:8px;margin-bottom:8px}
   #taskHint{font-size:12px;color:var(--ink2);min-height:32px;margin-top:6px;line-height:1.5}
   .famRow{font-size:13px;padding:2px 0;line-height:1.6}
@@ -9435,7 +9435,7 @@ function render(){
     ensureApt(r);
     const isTaisho = S.taishoId === r.name;
     row.innerHTML = `<div class="rname">${r.name}${isTaisho?' <b style="color:var(--accent)">◆</b>':''}<small>${r.role}・${r.age}歲${traitTag(r)}${isSick?'・<span class="loyLow">🤒病中</span>':''}</small></div>`+
-                    `<div class="rstats">武${r.bu} 政${r.nai} 智${r.chi}<br>功${r.merit||0}${loy}${staHtml}<br><span style="color:var(--accent2)">${APT_NAME[r.apt]}${r.apt2?`・${APT_NAME[r.apt2]}`:''}</span></div>`;
+                    `<div class="rstats">武${r.bu} 政${r.nai} 智${r.chi}　功${r.merit||0}${loy}${staHtml}<br><span style="color:var(--accent2)">${APT_NAME[r.apt]}${r.apt2?`・${APT_NAME[r.apt2]}`:''}</span></div>`;
     row.querySelector('.rname').onclick = () => openRetainer(i);
     const fc = faceCanvas(r, 36);
     fc.className = 'face ' + (r.kind==='一門' ? 'k-ichimon' : r.kind==='浪人' ? 'k-ronin' : 'k-fudai');
