@@ -902,8 +902,34 @@ function saveNow(){
     const b = document.getElementById('btnSaveNow');
     if(b){ b.classList.remove('dirty'); b.textContent = '💾 保存'; }
     log(`💾 家史已保存(第${curSlot}欄)。`);
-  }catch(e){ log('保存失敗——儲存空間異常。','bad'); }
+  }catch(e){
+    log(`保存失敗——${e && e.name === 'QuotaExceededError' ? '儲存空間已滿' : '儲存空間異常(' + (e && e.message ? e.message.slice(0,60) : '?') + ')'}。`,'bad');
+    try{ alert('⚠ 保存失敗:' + (e && e.message || '儲存空間異常') + String.fromCharCode(10) + '若使用私密瀏覽或 file:// 開啟,瀏覽器可能禁止存檔。'); }catch(e2){}
+  }
 }
+// 開機自測:儲存空間不可寫時,標題畫面顯眼警告(私密瀏覽/file
+// 協定/空間滿都會使存檔失效)
+function storageSelfTest(){
+  try{
+    localStorage.setItem('__sengoku_probe', '1');
+    localStorage.removeItem('__sengoku_probe');
+    return true;
+  }catch(e){
+    try{
+      const tc = document.getElementById('titleCard');
+      if(tc && !document.getElementById('storWarn')){
+        const w = document.createElement('div');
+        w.id = 'storWarn';
+        w.style.cssText = 'background:#8a2a1e;color:#fff;border-radius:8px;padding:8px 12px;margin:6px 0;font-size:13px';
+        w.textContent = '⚠ 本裝置目前無法保存進度(' + (e && e.message ? e.message.slice(0,50) : '儲存空間不可用') + ')——私密瀏覽、file:// 開啟或空間已滿都會造成。請改用一般瀏覽模式並經 http 網址遊玩。';
+        tc.insertBefore(w, tc.firstChild);
+      }
+    }catch(e2){}
+    return false;
+  }
+}
+if(typeof window.addEventListener === 'function')
+  window.addEventListener('DOMContentLoaded', storageSelfTest);
 // 有未保存的進度時,離頁前提醒(測試墊片無 addEventListener,須防衛)
 if(typeof window.addEventListener === 'function')
   window.addEventListener('beforeunload', e=>{
