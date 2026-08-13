@@ -9546,7 +9546,7 @@ function render(){
     const sg = S.siege ? (()=>{ const f=(S.rivals||[]).find(x=>x.id===S.siege.id); return f?`<b style="color:var(--accent)">　🏯 圍城中:${f.seat}城(${S.siege.seasons}/${S.siege.need} 季・在外 ${S.siege.sent} 兵)</b>`:''; })() : '';
     $('armyInfo').innerHTML = `<span class="dim">編成:${armyLabel()}　|　練兵→${U.name}(${ri(U.money*disc)}貫+${U.rice}石${disc<1?'・長篠後普及':''})</span>${sg}`;
   }
-  $('slotTag').textContent = `存檔欄:第${['一','二','三','四'][curSlot-1]}欄(每季自動存檔)`;
+  $('slotTag').textContent = `存檔欄:第${['一','二','三','四'][curSlot-1]}欄(手動存檔${S && S._dirty ? '・有未保存進度●' : ''})`;
   if($('mapCap')){
     const live = S.rivals ? S.rivals.filter(f=>f.alive && pdist(f) <= 240) : [];
     const top = live.length ? live.reduce((a,b)=>a.koku>=b.koku?a:b) : null;
@@ -10907,8 +10907,8 @@ $('btnSeki').onclick = () => {
   pumpModal();
 };
 $('btnEnd').onclick = endSeason;
-$('btnSave').onclick = () => { save(); log(`已存入第${['一','二','三','四'][curSlot-1]}欄。`); render(); };
-$('btnTitle').onclick = () => { save(); location.reload(); };
+$('btnSave').onclick = () => { saveNow(); render(); };   // 修:手動存檔制後 save() 只立髒旗,此鈕須走真寫檔
+$('btnTitle').onclick = () => { saveNow(); location.reload(); };   // 修:回標題前真存檔(否則 reload 回滾)
 $('btnSaveAs').onclick = () => {
   const opts = [];
   for(let i=1;i<=SLOT_COUNT;i++){
@@ -10917,6 +10917,7 @@ $('btnSaveAs').onclick = () => {
     opts.push({label:`第${['一','二','三','四'][i-1]}欄${info?`(覆蓋 ${info.famName}家・${info.era})`:'(空欄)'}`,
       fn:()=>{
         try{
+          S._dirty = false;
           S.savedAt = Date.now();
           localStorage.setItem(SLOT_KEY(i), JSON.stringify(S));
           curSlot = i;
