@@ -14,6 +14,7 @@
     --paper:#f3ead8; --paper2:#e9dcc3; --ink:#3a2f24; --ink2:#6b5b45;
     --accent:#a63c2e; --accent2:#7d2f24; --gold:#b08a3e; --ok:#4a7a3a; --bad:#a63c2e;
     --panel:#faf4e6; --line:#c9b891;
+    --crimson:#8a2a1e; --navy:#4a4460; --murasaki:#7a4a9a; --loss:#a02818;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--paper);color:var(--ink);font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;min-height:100vh}
@@ -69,6 +70,8 @@
   #mapCap{font-size:12px;color:var(--ink2);text-align:center;padding-top:4px}
   #panel{flex:1 1 340px;min-width:320px;max-width:480px;display:flex;flex-direction:column;gap:10px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .groupTag{font-size:11px;color:var(--ink2);letter-spacing:5px;text-align:center;margin:3px 0 -3px;font-family:var(--serif)}
+  .card.ops{background:#fdf1dc;border-color:#d8c49a}
   #dateBox{font-size:20px;font-weight:bold;text-align:center;letter-spacing:2px}
   #dateBox .era{color:var(--accent);}
   #dateBox .seasonTag{display:inline-block;margin-left:8px;font-size:14px;background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:1px 10px;vertical-align:middle}
@@ -114,7 +117,11 @@
   #policyBox .row:last-child{margin-bottom:0}
   .taxBtn{padding:3px 10px;font-size:13px}
   .taxBtn.on{background:var(--gold);border-color:#8a6a2e;color:#fff}
-  #btnEnd{font-size:18px;padding:12px;letter-spacing:6px;width:100%}
+  #actionBar{position:sticky;bottom:10px;z-index:6;display:flex;gap:8px;padding-top:8px;
+    background:linear-gradient(to bottom, rgba(243,234,216,0), var(--paper) 45%)}
+  #btnEnd{font-size:18px;padding:12px;letter-spacing:6px;flex:1}
+  #btnSave2{flex:0 0 auto;font-size:16px;padding:12px 13px}
+  #btnSave2.dirty{border-color:var(--accent);color:var(--accent);font-weight:bold}
   #logBox{margin:0 12px 12px;background:#2f271d;color:#d8cbb2;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7;height:150px;overflow-y:auto}
   #logBox .y{color:#ffd98a}
   #logBox .good{color:#9fd08a}
@@ -202,6 +209,10 @@
     border:1px solid #c9b385;border-left:11px solid #6a4a2e;border-right:11px solid #6a4a2e;
     border-radius:7px;box-shadow:inset 0 0 22px rgba(96,68,34,.16)}
   #logBox .y{color:#8a5a1e;font-weight:bold;letter-spacing:1px;font-family:var(--serif)}
+  #logBox div.ev{border-left:3px solid var(--gold);padding-left:7px;margin:3px 0;background:rgba(176,138,62,.07)}
+  #logBox div.ev.good{border-left-color:var(--ok)}
+  #logBox div.ev.bad{border-left-color:var(--loss)}
+  #logBox .y{margin-top:9px;border-top:1px dashed var(--line);padding-top:5px}
   #logBox .good{color:#2f6a2f}
   #logBox .bad{color:#a63c2e}
   #logBox div:last-child{animation:fadein .45s ease-out}
@@ -231,17 +242,17 @@
   /* 戰況 HUD */
   #modalHud .kstin{width:46px;font-size:12px;padding:1px 2px;border:1px solid var(--line);border-radius:4px;background:#fffdf6;text-align:right}
   #modalHud select.ksgsel{font-size:12px;max-width:110px;border:1px solid var(--line);border-radius:4px;background:#fffdf6}
-  #modalHud .kspow{color:#8a2a1e;font-weight:bold}
+  #modalHud .kspow{color:var(--crimson);font-weight:bold}
   #modalHud .sktitle{font-weight:bold;margin:8px 0 2px;font-size:15px}
-  #modalHud .skun{color:#a02818;margin-left:8px;font-size:12px;font-weight:normal}
+  #modalHud .skun{color:var(--loss);margin-left:8px;font-size:12px;font-weight:normal}
   #modalHud .sktier{margin:8px 0 4px;color:#7a6a4f;font-size:12px;border-bottom:1px dashed var(--line);padding-bottom:2px}
   #modalHud .sktier.sktlock{opacity:.55}
   #modalHud .skrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:2px}
   #modalHud .sknode{border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;background:rgba(246,239,221,.55);line-height:1.35}
   #modalHud .sknode b{font-size:13px}
   #modalHud .sknode small{display:block;font-size:11px;color:#7a6a4f;margin-top:1px}
-  #modalHud .skpip{float:right;color:#8a2a1e;letter-spacing:2px;font-size:11px}
-  #modalHud .sknode.skcan{border-color:#8a2a1e;cursor:pointer;box-shadow:0 1px 5px rgba(138,42,30,.28);background:#fff8ea}
+  #modalHud .skpip{float:right;color:var(--crimson);letter-spacing:2px;font-size:11px}
+  #modalHud .sknode.skcan{border-color:var(--crimson);cursor:pointer;box-shadow:0 1px 5px rgba(138,42,30,.28);background:#fff8ea}
   #modalHud .sknode.skcan:hover{background:#ffefd8}
   #modalHud .sknode.skmax{border-color:#b8963e;background:rgba(232,200,122,.28)}
   #modalHud .sknode.sklock{opacity:.45;filter:grayscale(.4)}
@@ -285,6 +296,10 @@
   #titleCard{background-color:#f8f1de;background-image:var(--washi)}
   #titleCard h1{letter-spacing:14px}
   .kcell,.ccell,.slotRow{transition:transform .12s, box-shadow .12s}
+  .tap{position:relative;padding-right:16px}
+  .tap::after{content:'▸';position:absolute;right:6px;top:50%;transform:translateY(-50%);
+    color:var(--accent);opacity:.3;font-size:12px;transition:opacity .15s}
+  .tap:hover::after{opacity:.95}
   .kcell:hover,.ccell:hover,.slotRow:hover{transform:translateY(-1px);box-shadow:0 3px 8px rgba(70,50,24,.18)}
 
   /* ================= 行動裝置最佳化 ================= */
@@ -392,9 +407,11 @@
         <div id="taskHint">選擇指令以查看說明。</div>
       </div>
       <div class="card" id="familyBox"></div>
+      <div class="groupTag">── 情 報 ──</div>
       <div class="card" id="rivalBox"></div>
       <div class="card" id="lordBox"></div>
-      <div class="card" id="policyBox">
+      <div class="groupTag">── 政 務 ──</div>
+      <div class="card ops" id="policyBox">
         <div class="row">年貢率:
           <button class="taxBtn ghost" data-tax="0.3">三公七民</button>
           <button class="taxBtn ghost" data-tax="0.4">四公六民</button>
@@ -422,7 +439,10 @@
         </div>
         <div class="row"><span id="armyInfo"></span></div>
       </div>
-      <button id="btnEnd">進行此季</button>
+      <div id="actionBar">
+        <button id="btnSave2" class="ghost" title="手動保存(本作不自動存檔)">💾</button>
+        <button id="btnEnd">進行此季</button>
+      </div>
     </div>
   </main>
   <div id="logBox"></div>
@@ -587,7 +607,7 @@ if(typeof MutationObserver !== 'undefined' && typeof window !== 'undefined' && L
     }).observe(document.body, {childList:true, subtree:true, characterData:true});
     txWalk(document.body);
     const cur = {zh:'中文', en:'English', ja:'日本語'}[LANG];
-    document.querySelectorAll('#langRow button').forEach(b=>{ if(b.textContent === cur){ b.style.fontWeight='bold'; b.style.borderColor='#8a2a1e'; } });
+    document.querySelectorAll('#langRow button').forEach(b=>{ if(b.textContent === cur){ b.style.fontWeight='bold'; b.style.borderColor='var(--crimson)'; } });
   });
 }
 
@@ -864,6 +884,7 @@ function log(msg, cls){
   const box = $('logBox');
   const div = document.createElement('div');
   if(cls) div.className = cls;
+  if(/[⚔☠🎉⚑🔥⚡🕯🏺💒⛏💰]|【/.test(msg)) div.className = (div.className ? div.className + ' ' : '') + 'ev';
   div.textContent = msg;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
@@ -891,6 +912,8 @@ function save(){
   S._dirty = true;
   const b = document.getElementById('btnSaveNow');
   if(b){ b.classList.add('dirty'); b.textContent = '💾 保存●'; }
+  const b2 = document.getElementById('btnSave2');
+  if(b2){ b2.classList.add('dirty'); b2.textContent = '💾●'; }
 }
 function saveNow(){
   if(!S) return;
@@ -901,6 +924,8 @@ function saveNow(){
     localStorage.setItem('sengoku_family_lastslot', String(curSlot));
     const b = document.getElementById('btnSaveNow');
     if(b){ b.classList.remove('dirty'); b.textContent = '💾 保存'; }
+    const b2 = document.getElementById('btnSave2');
+    if(b2){ b2.classList.remove('dirty'); b2.textContent = '💾'; }
     log(`💾 家史已保存(第${curSlot}欄)。`);
   }catch(e){
     log(`保存失敗——${e && e.name === 'QuotaExceededError' ? '儲存空間已滿' : '儲存空間異常(' + (e && e.message ? e.message.slice(0,60) : '?') + ')'}。`,'bad');
@@ -920,7 +945,7 @@ function storageSelfTest(){
       if(tc && !document.getElementById('storWarn')){
         const w = document.createElement('div');
         w.id = 'storWarn';
-        w.style.cssText = 'background:#8a2a1e;color:#fff;border-radius:8px;padding:8px 12px;margin:6px 0;font-size:13px';
+        w.style.cssText = 'background:var(--crimson);color:#fff;border-radius:8px;padding:8px 12px;margin:6px 0;font-size:13px';
         w.textContent = '⚠ 本裝置目前無法保存進度(' + (e && e.message ? e.message.slice(0,50) : '儲存空間不可用') + ')——私密瀏覽、file:// 開啟或空間已滿都會造成。請改用一般瀏覽模式並經 http 網址遊玩。';
         tc.insertBefore(w, tc.firstChild);
       }
@@ -6304,8 +6329,8 @@ function ksHexImg(){
 // 即時盤上指揮:持續畫面——戰局自動推進,軍令隨時可改,可暫停/加速/委任
 function ksHexStTxt(st){
   const dl = st._dLoss||0, dm = st._dMor||0;
-  return `${ksTotal(st)}兵${dl>0?`<b style="color:#a02818">-${dl}</b>`:''}・氣${ri(st.mor)}`+
-    (dm ? `<b style="color:${dm<0?'#a02818':'#4a7a3a'}">${dm>0?'+':''}${dm}</b>` : '');
+  return `${ksTotal(st)}兵${dl>0?`<b style="color:var(--loss)">-${dl}</b>`:''}・氣${ri(st.mor)}`+
+    (dm ? `<b style="color:${dm<0?'var(--loss)':'var(--ok)'}">${dm>0?'+':''}${dm}</b>` : '');
 }
 function ksHexGridHtml(){
   const feats = hxFeatCells().length > 0;
@@ -6334,11 +6359,11 @@ function ksHexCtrlHtml(){
     `<button class="ghost ksbtn" onclick="ksHexAutoBtn()">全軍委任</button>`+
     `<button class="ghost ksbtn" onclick="ksHexRetreatBtn()">鳴金退兵</button>`+
     `<button class="ghost ksbtn" onclick="ksHexWideBtn()" title="放大盤面並進入全螢幕(電腦)">${KS.hexWide?'⛶ 還原':'⛶ 全螢幕'}</button>`+
-    ((S && !KS.scenario && !KS.chouUsed && KS.hex.round===0 && KS.hex.units.some(u=>u.s.kind==='foevassal'&&!u.s.broke)) ? `<button class="ghost ksbtn" onclick="ksChouPanel()" style="color:#7a4a9a">🕯 內應調略</button>` : '')+
+    ((S && !KS.scenario && !KS.chouUsed && KS.hex.round===0 && KS.hex.units.some(u=>u.s.kind==='foevassal'&&!u.s.broke)) ? `<button class="ghost ksbtn" onclick="ksChouPanel()" style="color:var(--murasaki)">🕯 內應調略</button>` : '')+
     `<span class="dim" id="hxround" style="margin-left:auto">${ksHexTimeStr(KS.hex.round)}(日沒 16:00)　`+
     (()=>{ const t2 = arr => arr.reduce((a,x)=>a+(x.broke?0:ksTotal(x)),0);
       const m2 = arr => { const l=arr.filter(x=>!x.broke); return l.length?ri(l.reduce((a,x)=>a+x.mor,0)/l.length):0; };
-      return `<b style="color:#8a2a1e">我 ${t2(KS.my)}兵/氣${m2(KS.my)}</b> vs <b style="color:#4a4460">敵 ${t2(KS.foe)}兵/氣${m2(KS.foe)}</b>`; })()+
+      return `<b style="color:var(--crimson)">我 ${t2(KS.my)}兵/氣${m2(KS.my)}</b> vs <b style="color:var(--navy)">敵 ${t2(KS.foe)}兵/氣${m2(KS.foe)}</b>`; })()+
     `</span></div>`;
 }
 function ksHexRedraw(full){
@@ -6381,7 +6406,7 @@ function ksChouPanel(){
       `<span class="dim">成算${ri(o.p*100)}%・${o.cost}貫</span>`+
       `<button class="ghost ksbtn" onclick="ksChouryaku('${u.s.id}')"${S.money < o.cost ? ' disabled' : ''}>遣使</button></div>`;
   }).join('');
-  dt.innerHTML = `<div style="border:1px solid var(--line);border-left:3px solid #7a4a9a;border-radius:6px;padding:6px 9px;margin:0 0 8px;background:rgba(246,239,221,.6);font-size:.86em">`+
+  dt.innerHTML = `<div style="border:1px solid var(--line);border-left:3px solid var(--murasaki);border-radius:6px;padding:6px 9px;margin:0 0 8px;background:rgba(246,239,221,.6);font-size:.86em">`+
     `<b>🕯 內應調略</b> <span class="dim">開戰前限遣一使;成則其備戰酣抽身,敵全軍動搖</span>`+
     `<span style="float:right;cursor:pointer" onclick="document.getElementById('hxDetail').innerHTML=''">✕</span><br>${rows}`+
     `<div class="dim">手許 ${ri(S.money)} 貫;信心薄・恩義厚・重利者易動</div></div>`;
@@ -6430,7 +6455,7 @@ function ksHexDetailHtml(){
   const u = KS.hex.units.find(x=>x.s.id === KS.hexSel);
   if(!u) { KS.hexSel = null; return ''; }
   const st = u.s, my = u.side==='my', g = st.gen || {};
-  const col = my ? '#8a2a1e' : '#4a4460';
+  const col = my ? 'var(--crimson)' : 'var(--navy)';
   const tot = ksTotal(st), U_NM = {ashigaru:'足輕', yumi:'弓', kiba:'騎馬', teppo:'鐵砲'};
   const mixTxt = U_KEYS.map(k=>{ const n = st.army && st.army[k] || 0;
     return n > 0 ? `${U_NM[k]}${n}(${tot?ri(n/tot*100):0}%)` : null; }).filter(Boolean).join('・');
@@ -9713,7 +9738,7 @@ function renderLords(){
       continue;
     }
     const vassals = S.rivals.filter(f=>f.alive && f.lord===key);
-    h += `<div class="rivalRow" data-lord="${key}"><b>${M.name}家${L.submitted?'<span style="color:var(--accent)">・臣服</span>':''}</b><span class="rsub">國力 ${lordPower(key)}(直轄${L.demesne}石+從屬${vassals.length + (S.allegiance===key?1:0)}家)${(L.wounds||0)>=0.05?`<span style="color:var(--bad)">・戰創 -${ri(L.wounds*100)}%</span>`:''}</span>`+
+    h += `<div class="rivalRow tap" data-lord="${key}"><b>${M.name}家${L.submitted?'<span style="color:var(--accent)">・臣服</span>':''}</b><span class="rsub">國力 ${lordPower(key)}(直轄${L.demesne}石+從屬${vassals.length + (S.allegiance===key?1:0)}家)${(L.wounds||0)>=0.05?`<span style="color:var(--bad)">・戰創 -${ri(L.wounds*100)}%</span>`:''}</span>`+
          `<span class="${L.favor<0?'loyLow':''}">好感 ${L.favor}${S.allegiance===key?'・<b>臣從中</b>':''}</span></div>`;
   }
   $('lordBox').innerHTML = h;
@@ -9870,7 +9895,7 @@ function renderRivals(){
         : f.lord ? `<b style="color:${f.lord==='imagawa'?'#8a5fa8':f.lord==='oda'?'#a8842a':f.lord==='takeda'?'#b04a3a':f.lord==='toyotomi'?'#3a7a6a':'#4a6a9a'}">${LORD_META[f.lord].name}方</b>`
         : '<span class="dim">無主</span>';
       const nb = isMyNeighbor(f), strike2 = inStrikeRange(f);
-      h += `<div class="rivalRow" data-rid="${f.id}"><b>${i+1}. ${fname(f)}</b>`+
+      h += `<div class="rivalRow tap" data-rid="${f.id}"><b>${i+1}. ${fname(f)}</b>`+
         `<span class="rsub">${f.gun||''}${nb?'<b style="color:var(--accent)">・鄰境</b>':strike2?'<b style="color:var(--accent2)">・兵鋒可及</b>':'<span class="dim">・遠隔</span>'}`+
         `<br>${f.koku}石・兵${rSol(f)}${f.fort?`・城${f.fort}`:''}・${lordBadge}`+
         `<br><span style="color:var(--accent2)">📋${planLabel(f)}</span></span>`+
@@ -10908,6 +10933,7 @@ $('btnSeki').onclick = () => {
 };
 $('btnEnd').onclick = endSeason;
 $('btnSave').onclick = () => { saveNow(); render(); };   // 修:手動存檔制後 save() 只立髒旗,此鈕須走真寫檔
+$('btnSave2').onclick = () => { saveNow(); };
 $('btnTitle').onclick = () => { saveNow(); location.reload(); };   // 修:回標題前真存檔(否則 reload 回滾)
 $('btnSaveAs').onclick = () => {
   const opts = [];
