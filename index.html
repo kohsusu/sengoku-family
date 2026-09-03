@@ -91,6 +91,16 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
   .groupTag{font-size:11px;color:var(--ink2);letter-spacing:5px;text-align:center;margin:3px 0 -3px;font-family:var(--serif)}
   .card.ops{background:#fdf1dc;border-color:#d8c49a}
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important;transition:none!important}
+    #modalBack{backdrop-filter:none}
+  }
+  @media (pointer: coarse){
+    .ksbtn{min-height:40px}
+    .kstin,.hxcell select{min-height:38px}
+    .rivalRow{padding:9px 4px}
+  }
+  .mfill.foe{background:repeating-linear-gradient(45deg,#8a3a2e 0 6px,#c06a4a 6px 12px)}
   #dateBox{font-size:20px;font-weight:bold;text-align:center;letter-spacing:2px}
   #dateBox .era{color:var(--accent);}
   #dateBox .seasonTag{display:inline-block;margin-left:8px;font-size:14px;background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:1px 10px;vertical-align:middle}
@@ -100,7 +110,7 @@
   .retainer .rname{min-width:88px;font-weight:bold;font-size:14px;cursor:pointer}
   .retainer .rname:hover{color:var(--accent)}
   .retainer .rname small{display:block;font-weight:normal;color:var(--ink2);font-size:11px}
-  .retainer .rstats{font-size:11px;color:var(--ink2);flex:1;min-width:150px;text-align:right;line-height:1.5}
+  .retainer .rstats{font-size:12.5px;color:var(--ink2);flex:1;min-width:150px;text-align:right;line-height:1.5}
   .loyLow{color:var(--bad);font-weight:bold}
   .staLow{color:#c07a2e;font-weight:bold}
   .rivalRow{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:13px;padding:3px 2px;border-bottom:1px dashed var(--line);cursor:pointer}
@@ -269,7 +279,7 @@
   #modalHud .skrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:2px}
   #modalHud .sknode{border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;background:rgba(246,239,221,.55);line-height:1.35}
   #modalHud .sknode b{font-size:13px}
-  #modalHud .sknode small{display:block;font-size:11px;color:#7a6a4f;margin-top:1px}
+  #modalHud .sknode small{display:block;font-size:12px;color:#7a6a4f;margin-top:1px}
   #modalHud .skpip{float:right;color:var(--crimson);letter-spacing:2px;font-size:11px}
   #modalHud .sknode.skcan{border-color:var(--crimson);cursor:pointer;box-shadow:0 1px 5px rgba(138,42,30,.28);background:#fff8ea}
   #modalHud .sknode.skcan:hover{background:#ffefd8}
@@ -435,6 +445,7 @@
       <div class="card" id="familyBox"></div>
       </div>
       <div id="panelR">
+      <div class="card ops" id="adviceBox" style="display:none"></div>
       <div class="groupTag">── 情 報 ──</div>
       <div class="card" id="rivalBox"></div>
       <div class="card" id="lordBox"></div>
@@ -498,6 +509,7 @@
 
 <script>
 'use strict';
+const BUILD = 'qw1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -913,7 +925,9 @@ function log(msg, cls){
   const box = $('logBox');
   const div = document.createElement('div');
   if(cls) div.className = cls;
-  if(/[⚔☠🎉⚑🔥⚡🕯🏺💒⛏💰]|【/.test(msg)) div.className = (div.className ? div.className + ' ' : '') + 'ev';
+  if(/[⚔☠🎉⚑🔥⚡🕯🏺💒⛏💰📯]|【/.test(msg)) div.className = (div.className ? div.className + ' ' : '') + 'ev';
+  if(cls === 'good' && !/^[◆🎉⚑💰🏺👑]/.test(msg)) msg = '◆ ' + msg;
+  else if(cls === 'bad' && !/^[▼⚠☠⚡]/.test(msg)) msg = '▼ ' + msg;
   div.textContent = msg;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
@@ -7830,7 +7844,17 @@ function inkyo(){
 function succession(lines, cause){
   const old = S.retainers[0];
   lines.push(`🕯 當主 ${old.name} ${cause||'病歿'},享年 ${old.age}…`);
-  linClose((cause||'病歿') + `(享年${old.age})`);
+  // 辭世語:依其一生擇一句
+  const jisei = (()=>{
+    if(S.clanType === 'temple') return '「南無阿彌陀佛——來世も、この土地で」';
+    const m2 = old.merit || 0, bu = old.bu||0, nai = old.nai||0, chi = old.chi||0;
+    if(cause === '討死') return '「武門の家に生まれて、畳の上など——」';
+    if(bu >= Math.max(nai, chi)) return m2 >= 60 ? '「刀折れ矢尽きるまで。悔いは、ない」' : '「もう一戰、したかったのう…」';
+    if(nai >= chi) return '「田は殘る。人も殘る。家も——殘れ」';
+    return m2 >= 60 ? '「謀は盡きた。あとは運じゃ」' : '「見えぬ先こそ、面白い」';
+  })();
+  lines.push(`　辭世——${jisei}`);
+  linClose((cause||'病歿') + `(享年${old.age}) 辭世${jisei}`);
   S.consorts = [];   // 側室各自落飾歸家
   S.retainers.shift();
   // 第一順位:已元服的男子一門眾(年長者優先)
@@ -8320,6 +8344,8 @@ function winterSettle(){
         lines.push(`鐵砲問屋如約供銃 ${want} 挺(半價 ${want * 3} 貫)。`); } }
     if(skUnspent('suiri') > 0) skPickModal('suiri');
     if(skUnspent('trade') > 0) skPickModal('trade');
+    // 先祖の加護:歲末自動寫入獨立保險槽(不佔四欄;欄位損毀時可於標題畫面復原)
+    try{ localStorage.setItem('sengoku_family_slot_auto', JSON.stringify(S)); }catch(e){}
   }
   // 📜 德政請願:連年凶作,領民乞求蠲免(戰國的一揆多為德政一揆)
   S.leanRun = (S.weather && S.weather.f < 0.85) ? (S.leanRun||0) + 1 : 0;
@@ -9429,7 +9455,43 @@ function endSeason(){
 }
 
 // ---------- 事件視窗 ----------
-function queueModal(m){ modalQueue.push(m); }
+// 初見說明:每個系統第一次登場,於彈窗內文頂端補兩行導引(記入 S.seen 僅一次)
+const INTRO_TIPS = [
+ ['fuubun',   /風聞——/,        '風聞:AI 動兵前一季會走漏消息。可坐視、密報目標(結恩亦可能結怨)、或趁虛先取。'],
+ ['bansho',   /盤上指揮/,      '盤上指揮:即時戰術盤——軍令下拉隨時可改,夾擊與地形是勝負關鍵;開戰前可「內應調略」策反敵與力。'],
+ ['seien',    /私戰——/,        '從屬請援:從屬眾被攻,救不救都是表態——出兵結恩、坐視寒心、調停立威。'],
+ ['kenka',    /家中喧嘩/,      '家中喧嘩:兩家從屬械鬥。戰國法度「喧嘩兩成敗」不問曲直同罰,最能立威。'],
+ ['kongi',    /婚儀——/,        '婚儀賀帖:鄰家結親是修好之機,賀儀厚薄人家都記在心裡。'],
+ ['tokusei',  /德政請願/,      '德政:荒年領民乞求免貢——允則得民心失米糧,拒則有一揆之險。'],
+ ['gonaisho', /御內書/,        '御內書:京都幕府的文書。獻金買名望,或請幕府調停大名之戰。'],
+ ['gungi',    /國戰軍議/,      '軍議:選大將、手動調四兵種數量(可少帶省糧),戰力數字即時可見——兵種與大將專精相合,戰力方能盡出。'],
+ ['fujin',    /布陣——/,        '布陣:先鋒攻高受損亦高;本陣崩則全軍潰;殿不參戰,可由采配投入。'],
+ ['shokaku',  /昇格/,          '昇格:五眾各有成為大名之路,條件湊齊,亂世的門就開了。'],
+ ['kakun',    /家訓の儀/,      '家訓:立家之訓得永久加成,違背有罰;換代可重立。'],
+ ['kani',     /敘位/,          '官位:花錢買名分——年貢交涉、婚姻身價、招攬名士都看它。'],
+ ['engumi',   /縁談/,          '縁談:婚姻即同盟。對象的家格與關係,決定亂世中誰站在你這邊。'],
+ ['sktree',   /治水・商政之道/, '技能樹:水利/商路各12級,每級一點。初傳滿5開中傳、中傳滿5開奧傳;同技能最多3級。'],
+ ['kokusen',  /との國戰|侵攻/,  '國戰:與大名的正面對決——軍議→布陣→開戰;討取敵將可永久削弱其家。'],
+ ['hyoban',   /共同討伐/,      '恩義帳:售米、受降、合兵皆積恩——恩深之家不趁你之危,危難時還會來報。'],
+ ['rouninv',  /登門|求仕/,     '浪人:史實名士依年代雲遊登門。威望是他們敲門的理由,祿是他們留下的理由。'],
+ ['siege',    /籠城|兵糧攻/,   '攻城:圍而不打,數季後守方糧盡自潰——但你的大軍在外亦日日耗糧。'],
+];
+function queueModal(m){
+  // 純通報降級:單鈕、無hud、非史實/勝敗/存亡大事者→不打斷,寫入年代記並即行其效
+  try{
+    if(m && m.choices && m.choices.length === 1 && !m.hud && typeof S !== 'undefined' && S
+       && typeof log === 'function' && !S.gameOver
+       && !/【史】|【勝】|【敗】|終焉|斷絕|滅亡|昇格|裏切|天下|辭世|家督|相續|讓位|の儀|桶狹間|本能寺|關原|大坂/.test(m.title || '')
+       && (m.body || '').length < 300){
+      log('📯 ' + (m.title || '') + '——' + (m.body || '').replace(/\n+/g, ' '));
+      const c = m.choices[0];
+      if(c && c.fn) c.fn();
+      if(typeof render === 'function') render();
+      return;
+    }
+  }catch(e){}
+  modalQueue.push(m);
+}
 function pumpModal(){
   if(!$('modalBack').classList.contains('hidden')) return;
   const m = modalQueue.shift();
@@ -9443,6 +9505,14 @@ function pumpModal(){
   $('modalCard').dataset.kind = m.title.includes('【史】') ? 'hist'
     : /⚔|合戰|の陣|籠城|攻|【勝】|【敗】|侵攻|討伐|謀反/.test(m.title) ? 'war' : '';
   $('modalBody').textContent = m.body;
+  try{
+    if(typeof S !== 'undefined' && S && !S.gameOver){
+      S.seen = S.seen || {};
+      const tip = INTRO_TIPS.find(t => !S.seen[t[0]] && t[1].test(m.title || ''));
+      if(tip){ S.seen[tip[0]] = 1;
+        $('modalBody').textContent = '💡 ' + tip[2] + '\n──────────\n' + m.body; }
+    }
+  }catch(e){}
   { const sc = $('modalScroll'); if(sc) sc.scrollTop = 0; }
   const box = $('modalChoices');
   box.innerHTML = '';
@@ -9465,8 +9535,26 @@ function pumpModal(){
   $('modalBack').classList.remove('hidden');
 }
 
+// 軍配者の助言:當前最要緊的一件事(復用破綻評分,常駐右欄頂)
+function adviceText(){
+  if(!S || S.gameOver) return null;
+  const lord = S.retainers[0];
+  const hasHeir = S.retainers.some((r,i)=>i>0 && r.kind==='一門' && r.sex!=='f') || (S.children||[]).some(c=>c.sex==='m');
+  if(lord && lord.age >= 45 && !hasHeir) return ['⚠ 後嗣未定','當主漸老而無男嗣——續弦、納側室或收婿養子,遲了便是絕家。'];
+  if(S.rice < S.soldiers) return ['⚠ 兵糧將盡','存米不足養兵一年——去市場買米,或減兵止血。'];
+  const w = playerWeakness();
+  if(w.w >= 40) return ['⚠ 虛實外露','鄰家看得見你的破綻(' + w.why.slice(0,2).join('、') + ')——快補上,否則有人趁虛而來。'];
+  if((skUnspent('suiri') + skUnspent('trade')) > 0) return ['📜 有未配的技能點','點資源列「水利/商路」開技能樹,擇一而修。'];
+  if(S.money >= 200) return ['💰 錢有餘裕','投普請、練兵、或留作調略本錢——錢不生息,家業才生息。'];
+  if(S.prestige >= 110) return ['👁 樹大招風','威望過盛,主家與鄰家都盯著你——收斂鋒芒,或乾脆更強。'];
+  return null;
+}
 // ---------- 畫面 ----------
 function render(){
+  { const ab = $('adviceBox');
+    if(ab){ const adv = adviceText();
+      if(adv){ ab.style.display = ''; ab.innerHTML = '<div class="cardTitle">軍配者の助言</div><b>' + adv[0] + '</b><div class="dim" style="margin-top:3px">' + adv[1] + '</div>'; }
+      else ab.style.display = 'none'; } }
   // 資源列
   const capS = solCap();
   $('topbar').innerHTML =
@@ -10933,6 +11021,30 @@ function renderSlots(){
     row.onclick = ()=>{ curSlot = i; renderSlots(); syncTitleButtons(); };
     list.appendChild(row);
   }
+  // 先祖の加護(自動保險槽)
+  try{
+    const rawA = localStorage.getItem('sengoku_family_slot_auto');
+    if(rawA){
+      const a = JSON.parse(rawA);
+      if(a && a.famName){
+        const row = document.createElement('div');
+        row.className = 'slotRow';
+        row.style.opacity = '.88';
+        row.innerHTML = `<div class="sNo">護</div><div class="sBody"><b>先祖の加護</b>〔歲末自動記錄〕`+
+          `<small>${a.famName}家・${eraName(a.year)}(${a.year})・${a.kokudaka} 石——欄位損毀時的最後保險</small></div>`;
+        const btn = document.createElement('button');
+        btn.className = 'ghost'; btn.textContent = '復原至選中欄';
+        btn.onclick = (e)=>{
+          e.stopPropagation();
+          if(!confirm(`以「先祖の加護」(${a.famName}家・${a.year}年)覆蓋第${['一','二','三','四'][curSlot-1]}欄?`)) return;
+          localStorage.setItem(SLOT_KEY(curSlot), rawA);
+          renderSlots(); syncTitleButtons();
+        };
+        row.appendChild(btn);
+        list.appendChild(row);
+      }
+    }
+  }catch(e){}
 }
 function syncTitleButtons(){
   const has = !!slotInfo(curSlot);
