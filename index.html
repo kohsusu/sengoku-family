@@ -425,6 +425,8 @@
     <div id="kamonGrid"></div>
     <label>起始之國(決定你的鄰人與命運)</label>
     <div id="regionList"></div>
+    <label>劇本(決定家史的長度)</label>
+    <div id="scenList"></div>
     <label>遊玩模式</label>
     <div id="modeList"></div>
     <label>家族類型(決定立家之道)</label>
@@ -521,7 +523,7 @@
 
 <script>
 'use strict';
-const BUILD = 'ux1';
+const BUILD = 'scn1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -680,7 +682,7 @@ const ERAS = [ // [起始年, 年號]
 let S = null;      // 遊戲狀態
 let modalQueue = [];
 
-function newState(famName, kamon, clan, mode, region){
+function newState(famName, kamon, clan, mode, region, scen){
   const st = {
     v:24, famName, kamon: kamon||0, clanType: clan||'kokujin', region: region||'mikawa', warBoom:0, rumors:[], slain:{}, kuge:0, lordMarr:{}, holds:[], skSuiri:{}, skTrade:{},
     consorts:[],
@@ -737,6 +739,52 @@ function newState(famName, kamon, clan, mode, region){
     const k = pick1(['bu','nai','chi']);
     l[k] = clamp(l[k] + 14 + ri(Math.random()*6), 10, 90);
     l.utsuwa = {bu:'武勇の器', nai:'治政の器', chi:'智謀の器'}[k];
+  }
+  // ── 短劇本:調起始年/家底/世界線(沿用既有史實事件軌道) ──
+  if(scen === 'oke'){
+    st.scenario = 'oke'; st.year = 1555; st.endYear = 1565;
+    st.kokudaka += 150; st.rice += 120; st.money += 40; st.pop += 140;
+    st.army.ashigaru += 12; st.soldiers += 12; st.suiri = 1;
+    st.wife.age += 10; st.lineage[0].from = 1555;
+    st.histDone = HISTORY.filter(h => h.y < 1555).map(h => h.id);
+    for(const f of st.rivals){   // 十年天下大勢:諸家亦各有長成
+      f.koku = ri(f.koku * (1.10 + Math.random()*0.25));
+      f.sol = ri(f.koku * 0.12);
+    }
+  }
+  if(scen === 'seki'){
+    st.scenario = 'seki'; st.year = 1595; st.endYear = 1615;
+    // 慶長開局:半生基業已成,亂世只剩最後一博
+    st.kokudaka = 1400; st.rice = 800; st.money = 280; st.pop = 1900;
+    st.prestige = 35; st.minshin = 62; st.fort = 2; st.suiri = 2; st.tradeLv = 2;
+    st.army = {ashigaru:100, yumi:20, kiba:14, teppo:16}; st.soldiers = 150;
+    st.lineage[0].from = 1595;
+    st.histDone = HISTORY.filter(h => h.y < 1595).map(h => h.id);
+    st.flags.bakufuWeak = true;
+    // 世界線 1595:今川織田齋藤武田皆成往事,豐臣當國、德川雌伏關東、上杉御館之亂後內耗
+    st.lords.imagawa.alive = false; st.lords.oda.alive = false;
+    st.lords.saito.alive = false;  st.lords.takeda.alive = false;
+    st.lords.nagao.demesne = 2000;
+    st.lords.toyotomi = {demesne:5200, favor:0, alive:true};
+    st.lords.tokugawa = {demesne:4200, favor:0, alive:true};
+    LORD_META.toyotomi.name = '豐臣'; LORD_META.tokugawa.name = '德川';
+    st.warPair = null;   // 太閤治世,兵戈暫息——直到關原
+    for(const f of st.rivals){   // 五十年淘洗:或亡或壯
+      if(Math.random() < 0.30){ f.alive = false; f.koku = 0; continue; }
+      f.koku = Math.min(8000, ri(f.koku * (1.4 + Math.random()*1.6)));
+      f.sol = ri(f.koku * 0.13);
+      f.fort = Math.min(5, 1 + ri(Math.random()*2.5));
+      f.money = ri(f.koku * 0.3);
+      if(['imagawa','oda','saito','takeda'].includes(f.lord)) f.lord = Math.random() < 0.6 ? 'toyotomi' : null;
+      // 半世紀家業:依家風補特化(devN 反推,逐階實授)
+      f.dev = {}; f.devN = [800,1500,2500].filter(m=>f.koku >= m).length;
+      const pool = f.clanKind==='merchant' ? ['bashaku','karamono','honai']
+                 : f.clanKind==='temple' ? ['tameike','teibou','shinden']
+                 : f.clanKind==='suigun' ? ['shuun','karamono','teppoya']
+                 : (f.persona==='武斷'||f.persona==='海賊') ? ['teppoya','bashaku','shinden']
+                 : ['tameike','shinden','teibou'];
+      for(let d=0; d<f.devN; d++){ const k = pool[Math.min(d, pool.length-1)]; f.dev[k] = Math.min(2, (f.dev[k]||0)+1); }
+    }
   }
   // 大名之家模式:自始即為大名,以奉行制治國
   if(mode === 'daimyo'){
@@ -8235,8 +8283,26 @@ function histEnding(){
       {label:'開啟新的家史', fn:()=>{ localStorage.removeItem(SLOT_KEY(curSlot)); location.reload(); }}
     ]});
 }
+function okeEnding(){
+  const k = S.kokudaka;
+  const grade = k>=3000 ? '【國人筆頭】十年之間鯨吞蠶食——三河無人不識你的家紋。'
+    : k>=1500 ? '【大身國人】倍於立家之業,亂世中站穩了腳跟。'
+    : k>=800 ? '【中堅之家】家業有成,子孫有靠——下一個十年,看他們的了。'
+    : '【存續】亂世十年,家名未墜——這本身就是了不起的事。';
+  queueModal({title:'【終】桶狹間之路——十年立家記',
+    hud: inkanStamp('家名安堵', 104),
+    body:`永祿八年(1565)。桶狹間的雨過去五年了,東海道的天,已經換了顏色。\n\n自弘治元年(1555)立家:\n\n最終石高:${S.kokudaka} 石\n威望:${S.prestige}\n家臣:${S.retainers.length} 人\n從屬眾:${myVassals().length} 家\n\n${grade}\n\n(可繼續經營走完整個戰國,或開啟新的家史)`,
+    choices:[
+      {label:'繼續經營(轉入本篇)', fn:()=>{ S.scenario = null; S.endYear = null; log('十年小成——而亂世,才剛剛開始。'); }},
+      {label:'開啟新的家史', fn:()=>{ localStorage.removeItem(SLOT_KEY(curSlot)); location.reload(); }}
+    ]});
+}
 function histCheck(){
   if(!S.lords) return;
+  if(S.scenario === 'oke' && S.year >= (S.endYear||1565) && S.season === 0 && !(S.flags && S.flags.scenEnd)){
+    S.flags = S.flags || {}; S.flags.scenEnd = true;
+    okeEnding();
+  }
   if(!S.histDone) S.histDone = [];
   if(!S.flags) S.flags = {};
   const list = S.flags.ifLine ? HISTORY_IF : HISTORY;   // If線成立後改走架空時間軸
@@ -11545,6 +11611,26 @@ let selectedKamon = 0;
 })();
 
 // 標題畫面:遊玩模式選擇
+let selectedScen = 'honpen';
+(function initScenList(){
+  const SCENS = {
+    honpen:{name:'本篇——七十年戰國', tag:'1545~1615', desc:'自天文十四年立家,走完整個亂世:桶狹間、本能寺、關原、大坂——三四代人的完整家史(約 2~4 小時)。'},
+    oke:{name:'桶狹間之路', tag:'1555~1565', desc:'短篇十年:今川的陰影正濃,尾張之虎蟄伏——你趕得上那場改變一切的雨嗎?一代人的立家記(約 40 回合)。'},
+    seki:{name:'關原之道', tag:'1595~1615', desc:'中篇二十年:太閤的天下已顯暮色,五大老各懷心思——天下分け目在前,站對邊,還是自成一勢?(約 80 回合)。'}
+  };
+  const list = $('scenList');
+  if(list) for(const key in SCENS){
+    const cell = document.createElement('div');
+    cell.className = 'ccell' + (key === 'honpen' ? ' sel' : '');
+    cell.innerHTML = `<b>${SCENS[key].name}</b><span class="ctag">${SCENS[key].tag}</span><p>${SCENS[key].desc}</p>`;
+    cell.onclick = ()=>{
+      selectedScen = key;
+      list.querySelectorAll('.ccell').forEach(el=>el.classList.remove('sel'));
+      cell.classList.add('sel');
+    };
+    list.appendChild(cell);
+  }
+})();
 let selectedMode = 'gozoku';
 (function initModeList(){
   const MODES = {
@@ -11682,7 +11768,7 @@ $('btnNew').onclick = () => {
   const nm = $('famInput').value.trim() || '白川';
   const info = slotInfo(curSlot);
   if(info && !confirm(`第${['一','二','三','四'][curSlot-1]}欄已有「${info.famName}家」(${info.era}),開新遊戲將覆蓋。確定?`)) return;
-  startGame(newState(nm, selectedKamon, selectedClan, selectedMode, selectedRegion));
+  startGame(newState(nm, selectedKamon, selectedClan, selectedMode, selectedRegion, selectedScen));
   save();
 };
 $('btnContinue').onclick = () => { const s = loadSave(curSlot); if(s) startGame(s); };
