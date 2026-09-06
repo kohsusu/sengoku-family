@@ -3160,6 +3160,9 @@ function conquestWar(f){
     title:`出兵討伐——${fname(f)}`,
     /* 地形預告於body另補 */
     body:`興兵伐${fname(f)}(${f.seat}・${f.koku}石・居城 ${fortLv} 級)。\n\n`+
+      `物見來報:彼處乃${terraGroupOf(f)}之地——${({'山國':'山道險隘,彼必據險而守','川筋':'川流縱橫,涉渡不易','海濱':'濱海平灘,亦有河口之阻','平野':'平野開闊,利於會戰'})[terraGroupOf(f)]}。
+
+`+
       `出陣 ${sent}(${armyLabel(sentArmy)})${supp?`,含從屬與力 ${ri(supp)}`:''}\n兵糧 ${sent} 石\n\n`+
       `⚠ 無故興兵:國人眾側目${f.lord && f.lord!=='player' ? `、其主家${LORD_META[f.lord].name}家震怒` : ''}`,
     choices:[
