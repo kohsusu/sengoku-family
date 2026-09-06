@@ -9,7 +9,7 @@ sb.window=sb;sb.globalThis=sb;vm.createContext(sb);
 vm.runInContext(script,sb,{filename:'game.js'});
 vm.runInContext('render=function(){};drawMap=function(){};save=function(){};log=function(){};',sb);
 const ev=c=>vm.runInContext(c,sb);
-ev(`S=newState('野試',0,'kokujin','gozoku','mikawa');`);
+ev(`S=newState('野試',0,'kokujin','gozoku','mikawa'); S.retainers.forEach(r=>{r.stamina=100;r.sick=0;});`);
 console.log('BUILD:', ev('BUILD'));
 const out=JSON.parse(ev(`(()=>{
   const res={n:0,win:0,rounds:0,maxR:0,err:'',evSum:0};
@@ -17,12 +17,12 @@ const out=JSON.parse(ev(`(()=>{
   for(let i=0;i<200;i++){
     const ter=['plain','mountain','river'][i%3];
     const cfg={
-      my:[{id:'m1',name:'我本陣',gen:ensureApt({name:'我將',bu:62,nai:50,chi:55,trait:null}),kind:'family',army:{ashigaru:70,yumi:20,kiba:15,teppo:10},pos:'hon',mor:0,init:0,broke:false},
-          {id:'m2',name:'我先手',gen:ensureApt({name:'先手將',bu:75,nai:45,chi:50,trait:null}),kind:'family',army:{ashigaru:90,yumi:20,kiba:15,teppo:10},pos:'sen',mor:0,init:0,broke:false}],
+      my: fbSplitMy({ashigaru:150,yumi:42,kiba:33,teppo:25},'onken'),   // 真實流程一律經fbSplitMy(2-3備有側翼);手組2v2是退化局
       foe:[{id:'f1',name:'敵本陣',gen:ensureApt({name:'敵將',bu:64,nai:50,chi:55,trait:null}),kind:'foe',vname:'敵將',army:{ashigaru:80,yumi:20,kiba:15,teppo:10},pos:'hon',mor:0,init:0,broke:false},
            {id:'f2',name:'敵先手',gen:ensureApt({name:'敵先鋒',bu:70,nai:45,chi:50,trait:null}),kind:'foe',vname:'敵先鋒',army:{ashigaru:75,yumi:18,kiba:12,teppo:8},pos:'sen',mor:0,init:0,broke:false}],
       ctx:{weather:'sunny',terrain:ter,fort:0},
-      defBonus: fbDefMul(ter) - 1
+      defBonus: fbDefMul(ter) - 1,
+      ordMap:{hon:'adv',sen:'adv',left:'adv',dono:'hold'}   // P3後fbRun吃軍令表;不帶=全軍按兵易被地利磨死
     };
     try{
       const r=fbRun(cfg);
@@ -30,7 +30,7 @@ const out=JSON.parse(ev(`(()=>{
       res.rounds+=r.nRounds; res.maxR=Math.max(res.maxR,r.nRounds);
       res.evSum+=r.rounds.reduce((a,x)=>a+x.events.length,0);
       if(!r.rounds.length){res.err='no-rounds';break;}
-      if(r.myRemain.length!==2||r.foeRemain.length!==2){res.err='remain-shape';break;}
+      if(r.myRemain.length!==cfg.my.length||r.foeRemain.length!==2){res.err='remain-shape';break;}
     }catch(e){ res.err=e.message.slice(0,120); break; }
   }
   res.ksRestored = (KS===KS0) && (BT===BT0);

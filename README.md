@@ -18,6 +18,7 @@
 - **活的世界**：21 家史實國人眾各自經營（評定方針公開可見）、宿怨同盟聯姻；大名切り取り併吞、境目相論、包圍網——你不動，世界也在動
 - **恩義與調略**：荒年售米、受降不殺都記在恩義帳上；戰場上可遣密使策反敵方與力（內應調略）
 - **大名國戰・盤上指揮**：軍議→布陣→15×15 六角即時戰。時刻制（辰の刻開戰、日沒為限）、兵種相剋、騎馬衝鋒 vs 足輕槍衾、夾擊合圍、地形（丘・林・小川・渡口）、指名攻擊；與力備由 AI 自行節度——大將身先士卒則士卒用命
+- **軍評定・野戰**：眾攻略野戰改制——軍師依智力提三案（穩健／力攻／地利／保守，智者另獻奇策：伏兵・誘敵），「軍師所見」勝算含庸才誤差；主君調兵佈陣後自動戰重播（可暫停・加速・采配一手），戰後「軍議の選択」覆盤，看走眼的軍師會向你諫言。守方地域決定戰場地形（山國多山道、川筋多川原）
 - **合戰體驗：關原の戰**：標題畫面直接參戰（不佔存檔）——扮演西軍大谷吉継（修羅）或東軍黑田長政（標準），史實佈陣（南宮山的毛利按兵不動、松尾山的小早川去就未明），小早川雙向去就：也許這一次，歷史在此改道
 - **史實事件軸**：桶狹間（可拚死護駕開啟今川上洛 If 線）、本能寺、關原、大坂之陣等 17 事件＋京都風雲、德政災害、天正慶長地震
 
@@ -32,6 +33,7 @@
 - **A living world**: 21 historical clans run their own multi-year plans (openly visible), with feuds, alliances and marriages among them; daimyō annex free clans and fight border wars — the world moves without you
 - **Favor & subversion**: selling rice in famine or sparing the defeated is remembered in a ledger of obligation; before battle you may send a secret envoy to turn an enemy vassal contingent
 - **Grand battles (Bangjō Shiki)**: war council → deployment → real-time 15×15 hex battles under a time-of-day clock (dawn to dusk). Weapon-type counters, cavalry charges vs. spear walls, flanking, terrain (hills, woods, streams, fords), named-target attacks; allied contingents act on their own morale — lead from the front and they fight harder
+- **Field battles (Gun-Hyōjō war council)**: your strategist (highest-intellect retainer) proposes three battle plans — steady, all-out assault, terrain advantage, or defensive — plus a stratagem (ambush / feigned retreat) if brilliant enough. Their estimated odds carry an error proportional to their intellect, so a mediocre strategist can misjudge badly. Adjust troops per division, watch the battle replay (pause / fast-forward / one mid-battle command), then review the post-battle debrief — a strategist whose plan proved wrong will apologize and remonstrate. Defender's home region decides the battlefield terrain
 - **The Battle of Sekigahara**: playable from the title screen (no save slot needed) — command Ōtani Yoshitsugu (West, brutal) or Kuroda Nagamasa (East, standard) with historical deployment: Mōri sits idle on Mt. Nangū, and Kobayakawa on Mt. Matsuo may betray either side. Perhaps this time, history takes another road
 - **17 historical events**: Okehazama (with an alternate "Imagawa marches on Kyōto" timeline if you save Yoshimoto), Honnō-ji, Sekigahara, Ōsaka, and more
 

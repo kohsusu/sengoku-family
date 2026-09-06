@@ -521,7 +521,7 @@
 
 <script>
 'use strict';
-const BUILD = 'fb3b';
+const BUILD = 'fb5';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -3169,24 +3169,22 @@ function conquestWar(f){
       });
       return;
     }
-    const lured = false;
+    // 野戰已全數改走軍評定(fbCouncilFlow),此處僅剩攻城
     startBattle({
-      title: mode==='siege' ? `攻${f.seat}城` : `${fname(f)}攻略——野戰`,
-      intro: mode==='siege' ? `${fname(f)}閉門不出,只得力攻其城。`
-           : lured ? `${fname(f)}且戰且退,誘我軍入山地險隘——彼素知我家騎馬之利,擇地相搏!`
-           : `${fname(f)}出城迎戰,兩軍對壘於境上。`,
-      isSiege: mode==='siege',
+      title: `攻${f.seat}城`,
+      intro: `${fname(f)}閉門不出,只得力攻其城。`,
+      isSiege: true,
       sent: sentArmy,
       rivalId: f.id, intel: f.intel,
-      terrain: mode==='siege' ? 'plain' : lured ? 'mountain' : terraDraw(f),   // 守方地域決定戰場(山國多山道/川筋多川原)
-      foe: {name:fname(f), army: foeArmyOf(f), morale: 70 + f.prestige*0.3, fort: mode==='siege' ? fortLv : 0,
+      terrain: 'plain',
+      foe: {name:fname(f), army: foeArmyOf(f), morale: 70 + f.prestige*0.3, fort: fortLv,
             general: rivalGeneral(f), special: foeSpecialOf(f)},
       onEnd:(res)=>{
         S.soldiers = armyTotal(S.army);
         if(res.win){
           res.taisho.merit = (res.taisho.merit||0) + 18;
           tryKillRivalMan(f, res, S.army);
-          victoryTerms(f, res.foeLossRatio, mode==='siege' ? '城陷' : '野戰大敗');
+          victoryTerms(f, res.foeLossRatio, '城陷');
         }else{
           S.prestige = Math.max(0, S.prestige - 5);
           S.minshin = clamp(S.minshin - 4, 0, 100);
@@ -5905,6 +5903,14 @@ function fbRun(cfg){
     // 軍令計畫:各陣位初始軍令(整場沿用;采配可改)
     const ordMap = cfg.ordMap || {hon:'adv', sen:'adv', left:'adv', right:'adv', dono:'hold'};
     H.units.forEach(u=>{ if(u.side==='my') u.ord = ordMap[u.s.pos] || 'adv'; });
+    KS.fieldHoshu = !!cfg.hoshu;
+    if(cfg.rikko){   // 力攻の陣:雷霆銳氣——武勇大將燃起全軍戰意
+      const senU = H.units.find(u=>u.side==='my' && u.s.pos==='sen');
+      const bu2 = senU && senU.s.gen ? (senU.s.gen.bu||55) : 55;
+      KS.my.forEach(o=>{ o.mor = clamp(o.mor + ri(6 + bu2*0.08), 0, 140); });
+      if(senU) senU.s.mor = clamp(senU.s.mor + ri(bu2*0.14), 0, 140);
+      KS.hist.push('⚔ ' + (senU ? senU.s.gen.name : '先手') + '橫槍立馬,三軍戰意如火(力攻銳氣)!');
+    }
     // 伏兵:抽最弱一備藏於北緣,round 3 現身
     let hidden = null;
     if(cfg.kisaku && cfg.kisaku.type === 'fusehi'){
@@ -5932,7 +5938,9 @@ function fbRun(cfg){
             hidden._hidden = false; hidden.ord = 'chg';
             hidden.s.mor = clamp(hidden.s.mor + 15, 0, 140);
             KS.foe.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor - 15, 0, 140); });
-            KS.hist.push('⚡【伏兵!】' + hidden.s.name + '自林間殺出,直撲敵背——敵全軍大駭(敵士氣 -15)!');
+            const fh2 = KS.foe.find(o=>o.pos==='hon' && !o.broke);
+            if(fh2) fh2.mor = clamp(fh2.mor - 10, 0, 140);
+            KS.hist.push('⚡【伏兵!】' + hidden.s.name + '自林間殺出,直撲敵背——敵全軍大駭(敵-15氣,本陣背後受敵再-10)!');
             kisakuNote = '伏兵得逞';
           }else{
             hidden._hidden = false; hidden.c = 4; hidden.r = 2; hidden.ord = 'adv';
@@ -5953,6 +5961,13 @@ function fbRun(cfg){
             kisakuNote = '誘敵識破';
           }
         }
+      }
+      // 保守の陣:忍至第五刻,敵鋒已鈍——全軍反攻
+      if(cfg.hoshu && !cfg._hoshuDone && rNow === 4){
+        cfg._hoshuDone = true;
+        H.units.forEach(u=>{ if(u.side==='my') u.ord = 'adv'; });
+        KS.my.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor + 5, 0, 140); });
+        KS.hist.push('🛡→⚔ 敵鋒已鈍——保守之陣轉守為攻,全軍齊進!');
       }
       // 采配腳本(重演時由 cfg 指定)
       if(cfg.saiOrd && rNow === cfg.saiRound){
@@ -6039,9 +6054,9 @@ function fbPropose(f, sentArmy){
   const PLANS = [
     {key:'onken', name:'穩健の陣', icon:'🛡', ordMap:{hon:'adv',sen:'adv',left:'adv',dono:'hold'}, plan:'onken'},
     (S.taishoId || (activeR()[1]&&activeR()[1].bu>=75))
-      ? {key:'rikko', name:'力攻の陣', icon:'⚔', ordMap:{hon:'adv',sen:'chg',left:'chg',dono:'hold'}, plan:'rikko'}
+      ? {key:'rikko', name:'力攻の陣', icon:'⚔', ordMap:{hon:'adv',sen:'chg',left:'chg',dono:'hold'}, plan:'rikko', rikko:true}
       : {key:'chiri', name:'地利の陣', icon:'⛰', ordMap:{hon:'hold',sen:'feat',left:'adv',dono:'hold'}, plan:'onken'},
-    {key:'hoshu', name:'保守の陣', icon:'🐚', ordMap:{hon:'hold',sen:'hold',left:'hold',dono:'hold'}, plan:'hoshu'}
+    {key:'hoshu', name:'保守の陣', icon:'🐚', ordMap:{hon:'hold',sen:'hold',left:'hold',dono:'hold'}, plan:'hoshu', hoshu:true}
   ];
   // 奇策:智略≥85 才浮現
   let kisaku = null;
@@ -6055,7 +6070,7 @@ function fbPropose(f, sentArmy){
   const noise = (1 - clamp(chi,20,100)/100) * 18;
   const out = PLANS.map(pl=>{
     const my = fbSplitMy(sentArmy, pl.plan);
-    const cfg = {my, foe, ctx:{weather, terrain, fort:0}, defBonus, ordMap:pl.ordMap,
+    const cfg = {my, foe, ctx:{weather, terrain, fort:0}, defBonus, ordMap:pl.ordMap, hoshu:!!pl.hoshu, rikko:!!pl.rikko,
                  kisaku: pl.kisaku ? fbClone(pl.kisaku) : null, target:f.id, dispName:fname(f)};
     let w=0, lossSum=0, brokeN=0;
     const NR = 12;
@@ -6285,7 +6300,7 @@ function ksHexInit(){
   const tiles = [];
   for(let r=0; r<HXROWS; r++){ tiles.push(Array(HXCOLS).fill('plain')); }
   if(ter === 'river'){
-    for(let r=0; r<HXROWS; r++) tiles[r][7] = 'river';
+    for(let r=0; r<HXROWS; r++) tiles[r][7] = KS.fieldMode ? 'stream' : 'river';   // 野戰=川原可涉(水中不利),國戰=大河憑渡口
     tiles[4][7] = 'ford'; tiles[10][7] = 'ford';
   }else if(ter === 'mountain'){
     tiles[1][7] = 'mount'; tiles[13][7] = 'mount'; tiles[4][4] = 'mount'; tiles[10][10] = 'mount';
@@ -6436,7 +6451,7 @@ function hxFoeOrders(){
     if(u.s.scMood === 'wary' || u.s.scMood === 'unstable'){ u.ord = 'hold'; continue; }   // 劇本:觀望諸隊按兵不動
     const adjMy = hxNeighbors(u.c,u.r).some(p=>{ const o=hxUnitAt(p.c,p.r); return o && o.side==='my' && !hxAloof(o); });
     if(adjMy){ u.ord = u.s.mor < 40 ? 'back' : 'chg'; continue; }
-    if(u.s.pos === 'hon'){ u.ord = KS.hex.round >= 6 ? 'adv' : 'hold'; continue; }
+    if(u.s.pos === 'hon'){ u.ord = KS.hex.round >= (KS.fieldMode ? 2 : 6) ? 'adv' : 'hold'; continue; }
     const fc = hxFeatCells().filter(p=>{ const o=hxUnitAt(p.c,p.r); return (!o || o.side==='foe') && hxDist(u,p) <= 5; });
     if(fc.length && Math.random() < 0.4){ u.ord = 'feat'; continue; }
     if(Math.random() < 0.3){ u.ord = pick1(['adv','hold','chg','back']); continue; }   // 凡將號令不整
@@ -6625,7 +6640,7 @@ function ksHexResolve(){
     const mFlank = hxNeighbors(e.c,e.r).map(p=>hxUnitAt(p.c,p.r)).filter(o=>o && o.side===m.side && o!==m).length;
     const eFlank = hxNeighbors(m.c,m.r).map(p=>hxUnitAt(p.c,p.r)).filter(o=>o && o.side===e.side && o!==e).length;
     const mS = ksStrength(m.s, (m.ord==='chg'||m.ord==='atk')?'charge':m.ord==='hold'?'hold':'charge', ctx, e.s.army) * sm.a * tm.a
-             * 1.08 * mUnit * Math.pow(1.28, mFlank)
+             * 1.08 * mUnit * (KS.fieldMode && KS.fieldHoshu && m.ord==='hold' ? 1.22 : 1) * Math.pow(1.28, mFlank)
              / Math.sqrt(Math.max(1,gangOn[m.s.id]||1));
     const eS = ksStrength(e.s, e.ord==='chg'?'charge':e.ord==='hold'?'hold':'charge', ctx, m.s.army) * se.a * te.a
              * eUnit * Math.pow(1.28, eFlank)
@@ -6633,7 +6648,7 @@ function ksHexResolve(){
              / Math.sqrt(Math.max(1,gangOn[e.s.id]||1));
     const share = mS / (mS + eS + 1);
     const eLoss = armyLose(e.s.army, clamp(0.13 * share * 2 * se.v * te.v, 0, 0.40), ctx, m.s.army);   // 傷率調降0.17→0.13:戰線多撐幾刻,過程可見
-    const mLoss = armyLose(m.s.army, clamp(0.13 * (1-share) * 2 * sm.v * tm.v, 0, 0.40), ctx, e.s.army);
+    const mLoss = armyLose(m.s.army, clamp(0.13 * (1-share) * 2 * sm.v * tm.v * (KS.fieldMode && KS.fieldHoshu && m.ord==='hold' ? 0.70 : 1), 0, 0.40), ctx, e.s.army);   // 保守の陣:結陣自保,損失控制
     e.s.mor = clamp(e.s.mor - eLoss/Math.max(1,e.s.init)*130 - (share>0.6?5:0) - mFlank*3, 0, 140);
     m.s.mor = clamp(m.s.mor - mLoss/Math.max(1,m.s.init)*130 - (share<0.4?5:0) - eFlank*3, 0, 140);
     ev.push(`${m.s.name} vs ${e.s.name}——${share>0.58?'我方壓制':share<0.42?'我方吃緊':'勢均力敵'};敵損 ${eLoss}、我損 ${mLoss}。`);
