@@ -509,7 +509,7 @@
 
 <script>
 'use strict';
-const BUILD = 'qw1';
+const BUILD = 'fb1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -5819,6 +5819,50 @@ function hxPass(c, r){ const t = hxTile(c, r); return t !== 'river' && t !== 'mo
 function hxUnitAt(c, r){
   return KS.hex.units.find(u=>!u.s.broke && u.c === c && u.r === r) || null;
 }
+// ══════════ 軍評定・野戰核心(P1):無頭全自動,回傳逐刻快照供重播 ══════════
+// cfg = { my:[sonae...], foe:[sonae...], ctx:{weather,terrain,fort}, defBonus:0~0.25, kisaku:null|{...P3} }
+// 回傳 { win, rounds:[{units:[{side,nm,snm,troops,mor,broke,clash}],events:[]}], kills:[], myRemain, foeRemain, nRounds }
+function fbClone(o){ return JSON.parse(JSON.stringify(o)); }
+function fbRun(cfg){
+  const savedKS = KS, savedBT = BT;
+  try{
+    const my = fbClone(cfg.my), foe = fbClone(cfg.foe);
+    [...my, ...foe].forEach(u=>{ u.init = armyTotal(u.army); u.broke = false;
+      if(!u.mor) u.mor = clamp(60 + (u.gen && u.gen.bu || 55) * 0.28, 25, 130); });
+    // 守方地利:敵軍(守方)全備兵力等效加成以士氣外之戰力呈現——直接放大兵額再於快照還原顯示
+    KS = { fieldMode:true, attacking:true, target: cfg.target || 'field', dispName: cfg.dispName || '敵勢',
+           my, foe, round:0, hist:[], full:[], sai:'', rout:null,
+           ctx: cfg.ctx || {weather: pickWeather(), terrain:'plain', fort:0}, castle:null,
+           fieldDefBonus: cfg.defBonus || 0, fieldKisaku: cfg.kisaku || null };
+    BT = null;
+    ksHexInit();
+    const snap = ()=> KS.hex.units.map(u=>({ side:u.side, nm:u.s.name, snm:u.s.snm || (u.s.gen && u.s.gen.name || '').slice(0,2),
+      troops:ksTotal(u.s), mor:ri(u.s.mor), broke:!!u.s.broke,
+      clash: !!(KS.hex.clash||[]).find(f2=>(f2.ac===u.c&&f2.ar===u.r)||(f2.bc===u.c&&f2.br===u.r)) }));
+    const rounds = [{units:snap(), events:['兩軍對峙於' + ({plain:'平野',mountain:'山道',river:'川原'}[KS.ctx.terrain]||'野') + ',殺氣漸凝。']}];
+    let guard = 0, histAt = 0;
+    while(!KS.hexDone && guard++ < 14){
+      ksHexResolve();
+      if(!KS || !KS.hex) break;
+      const ev2 = (KS.hist || []).slice(histAt);
+      histAt = (KS.hist || []).length;
+      rounds.push({units:snap(), events:ev2});
+    }
+    const result = {
+      win: !!KS.fieldWin,
+      rounds,
+      kills: (KS.killed || []).slice(),
+      nRounds: KS.hex ? KS.hex.round : rounds.length - 1,
+      myRemain: KS.my.map(u=>({nm:u.name, army:fbClone(u.army), mor:ri(u.mor), broke:!!u.broke, fought:!!u._fought})),
+      foeRemain: KS.foe.map(u=>({nm:u.name, army:fbClone(u.army), mor:ri(u.mor), broke:!!u.broke}))
+    };
+    return result;
+  }finally{
+    KS = savedKS; BT = savedBT;
+  }
+}
+// 守方地利倍率(P2 起由地域決定;戰力側,不進士氣)
+function fbDefMul(terrain){ return terrain==='mountain' ? 1.20 : terrain==='river' ? 1.15 : 1.10; }
 function ksHexInit(){
   const ter = KS.ctx.terrain;
   const tiles = [];
@@ -5852,9 +5896,13 @@ function ksHexInit(){
     }
   }
   if(!KS.attacking && KS.ctx.fort > 0) tiles[7][0] = 'castle';
-  // 布陣位 → 起始格(我左敵右;殿在最後)
-  const mySlot = {hon:[[0,7]], sen:[[2,7]], left:[[2,4],[2,2]], right:[[2,10],[2,12]], dono:[[0,5],[0,9]]};
-  const foeSlot = {hon:[[14,7]], sen:[[12,7]], left:[[12,10],[12,12]], right:[[12,4],[12,2]], dono:[[14,5],[14,9]]};
+  // 布陣位 → 起始格(我左敵右;殿在最後);軍評定野戰用壓縮佈陣,三刻內接敵
+  const mySlot = KS.fieldMode
+    ? {hon:[[4,7]], sen:[[5,7]], left:[[5,4],[5,3]], right:[[5,10],[5,11]], dono:[[4,5],[4,9]]}
+    : {hon:[[0,7]], sen:[[2,7]], left:[[2,4],[2,2]], right:[[2,10],[2,12]], dono:[[0,5],[0,9]]};
+  const foeSlot = KS.fieldMode
+    ? {hon:[[10,7]], sen:[[9,7]], left:[[9,10],[9,11]], right:[[9,4],[9,3]], dono:[[10,5],[10,9]]}
+    : {hon:[[14,7]], sen:[[12,7]], left:[[12,10],[12,12]], right:[[12,4],[12,2]], dono:[[14,5],[14,9]]};
   const spare = side => side==='my' ? [[1,6],[1,8],[1,3],[1,11],[0,3],[0,11],[1,1],[1,13]] : [[13,6],[13,8],[13,3],[13,11],[14,3],[14,11],[13,1],[13,13]];
   const units = [];
   KS.hex = {tiles, units, round:0};   // 先掛上,擺兵時 hxTile/hxUnitAt 才有得查
@@ -6164,6 +6212,7 @@ function ksHexResolve(){
              / Math.sqrt(Math.max(1,gangOn[m.s.id]||1));
     const eS = ksStrength(e.s, e.ord==='chg'?'charge':e.ord==='hold'?'hold':'charge', ctx, m.s.army) * se.a * te.a
              * eUnit * Math.pow(1.28, eFlank)
+             * (KS.fieldMode ? (1 + (KS.fieldDefBonus || 0)) : 1)
              / Math.sqrt(Math.max(1,gangOn[e.s.id]||1));
     const share = mS / (mS + eS + 1);
     const eLoss = armyLose(e.s.army, clamp(0.13 * share * 2 * se.v * te.v, 0, 0.40), ctx, m.s.army);   // 傷率調降0.17→0.13:戰線多撐幾刻,過程可見
@@ -6242,7 +6291,7 @@ function ksHexResolve(){
   }
   const myLive = KS.my.filter(s=>!s.broke && ksTotal(s)>0 && s.pos!=='dono').length + KS.my.filter(s=>!s.broke && s.pos==='dono' && ksTotal(s)>0).length;
   const foeLive = KS.foe.filter(s=>!s.broke && ksTotal(s)>0).length;
-  if(KS.rout || !myLive || !foeLive || H.round >= HXMAXR){
+  if(KS.rout || !myLive || !foeLive || H.round >= (KS.fieldMode ? 10 : HXMAXR)){
     const myStr = KS.my.reduce((a,s)=>a+(s.broke?0:ksTotal(s)),0);
     const foeStr = KS.foe.reduce((a,s)=>a+(s.broke?0:ksTotal(s)),0);
     // 比例戰果只論「流過血的部隊」——按兵觀望者不與論功(毛利式摸魚不能灌水)
@@ -6257,12 +6306,14 @@ function ksHexResolve(){
     // 關原劇本:西軍拖到日暮=家康別動諸隊趕到——時限未破敵者以敗論(修羅的計時器)
     if(KS.scenario && KS.side === 'west' && !KS.rout && myLive && foeLive) win = false;
     KS.hexDone = true;
+    if(KS.fieldMode){ KS.fieldWin = win; return; }   // 軍評定:無頭結算,勝敗交還 fbRun
     ksHexStop();
     ksHexExitWide();
     $('modalBack').classList.add('hidden');   // 收掉持續畫面,讓戰報視窗登場
     ksEnd(win);
     return;
   }
+  if(KS.fieldMode) return;   // 無頭模式不觸畫面
   if(!KS.hexAuto) ksHexRedraw(false);
 }
 function ksTryKillHex(foeS, ev){
@@ -6271,7 +6322,7 @@ function ksTryKillHex(foeS, ev){
   const tot = KS.my.reduce((a,s)=>a+(s.broke?0:ksTotal(s)),0) || 1;
   const p = clamp(0.06 + (kb/tot)*0.35, 0.04, 0.32);
   if(Math.random() > p) return;
-  if(!KS.scenario) slayVassal(KS.target, foeS.vname);   // 體驗戰不碰領國名冊
+  if(!KS.scenario && !KS.fieldMode) slayVassal(KS.target, foeS.vname);   // 體驗戰/軍評定不碰領國名冊
   KS.killed = (KS.killed||[]).concat(foeS.vname);
   if(KS.hex) KS.evKill = KS.hex.round;   // 陣中斬將:此後兩刻與力振奮
   ev.push(`☠【討取】亂軍之中,${foeS.vname} 為我軍所斬!${LORD_META[KS.target] ? `——${LORD_META[KS.target].name}家自此少一柱石。` : ''}`);
