@@ -521,7 +521,7 @@
 
 <script>
 'use strict';
-const BUILD = 'fb5';
+const BUILD = 'dv1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1965,10 +1965,47 @@ const PLANS = {
 const FORT_COST = lv => 120 + lv*90;                 // 築城砦第 lv+1 級所需
 const rivalKokuCap = () => ri(8000 * (S.year>=1590 ? 1.4 : S.year>=1570 ? 1.2 : 1));
 const rGrudge = (f, id) => (f.grudge && f.grudge[id]) || 0;
-const rDefense = f => ri(rSol(f) * (1 + (f.fort||0)*0.28));   // 守方戰力(城砦加成)
+// ══════════ 眾的家風特化(f.dev):石高跨 800/1500/2500 里程碑自動取得,家業＋性格加權三選於八 ══════════
+const FDEV_META = {
+  tameike:{name:'溜池普請'}, shinden:{name:'新田開發'}, teibou:{name:'堤防強化'},
+  bashaku:{name:'馬借・問屋'}, teppoya:{name:'鐵砲問屋'}, shuun:{name:'舟運堀川'},
+  honai:{name:'保內商人網'}, karamono:{name:'唐物交易'}
+};
+const fDev = (f,k)=> ((f.dev||{})[k])||0;
+function fDevPick(f){   // 可重複取同技升級(每技上限2級)
+  const w = {tameike:2, shinden:2, teibou:1, bashaku:1, teppoya:1, shuun:0.5, honai:1, karamono:0.5};
+  if(f.clanKind==='merchant'){ w.bashaku+=4; w.karamono+=3; w.honai+=2; }
+  if(f.clanKind==='temple'){ w.tameike+=4; w.teibou+=3; }
+  if(f.clanKind==='suigun'){ w.shuun+=5; w.karamono+=2; }
+  if(f.clanKind==='shinobi'){ w.teppoya+=2; w.honai+=2; }
+  if(f.persona==='武斷'||f.persona==='海賊') w.teppoya+=4;
+  if(f.persona==='保守'){ w.teibou+=3; w.shinden+=2; }
+  if(f.persona==='商業'){ w.bashaku+=2; w.honai+=2; }
+  if(S.year < 1560) w.teppoya *= 0.3;   // 種子島之銃未廣,問屋難為
+  const ks = Object.keys(w).filter(k=> fDev(f,k) < 2);
+  if(!ks.length) return null;
+  const tot = ks.reduce((a,k)=>a+w[k],0);
+  let roll = Math.random()*tot, sel = ks[ks.length-1];
+  for(const k of ks){ roll -= w[k]; if(roll<=0){ sel=k; break; } }
+  return sel;
+}
+const FDEV_RUMOR = {tameike:'廣修溜池,阡陌日闢', shinden:'招民墾荒,新田連片', teibou:'築堤護田,水旱無虞',
+  bashaku:'廣設問屋,商旅輻輳', teppoya:'結交堺商,銃聲時聞', shuun:'開堀通舟,水柵環城',
+  honai:'商網四布,有無相通', karamono:'唐船泊岸,奇貨可居'};
+function fDevGain(f, lines){   // 歲末檢查:每跨一座里程碑得一次特化(一生至多3次)
+  f.dev = f.dev || {}; f.devN = f.devN || 0;
+  const MS = [800, 1500, 2500];
+  while(f.devN < 3 && f.koku >= MS[f.devN]){
+    const k = fDevPick(f);
+    if(!k){ f.devN += 1; continue; }
+    f.dev[k] = (f.dev[k]||0) + 1; f.devN += 1;
+    if(lines) lines.push(`${fname(f)}${FDEV_RUMOR[k]}——家風漸成「${FDEV_META[k].name}」。`);
+  }
+}
+const rDefense = f => ri(rSol(f) * (1 + (f.fort||0)*0.28) * (1 + 0.15*fDev(f,'shuun')));   // 守方戰力(城砦加成;舟運=據水而守)
 function addGrudge(f, id, n){ if(!f.grudge) f.grudge = {}; f.grudge[id] = clamp((f.grudge[id]||0) + n, 0, 100); }
 // 恩義帳:該家欠玩家的人情(受降不殺+30/共同出兵+20/荒年售米+12/縁組+25/贈禮+8;歲末漸淡)
-function addOn(f, n){ f.on = clamp((f.on||0) + n, -100, 100); }
+function addOn(f, n){ f.on = clamp((f.on||0) + (n > 0 ? ri(n * (1 + 0.25*fDev(f,'honai'))) : n), -100, 100); }   // 保內商人網:恩義互動更深
 function planLabel(f){
   if(!f.plan) return '無定見';
   const p = PLANS[f.plan.type]; if(!p) return '無定見';
@@ -2056,13 +2093,13 @@ function simRivalSeason(){
     const nai = mN ? mN.nai : 42;                           // 內政看家臣,無人則粗陋自理
     switch(cmd){
       case 'nomu':   f.koku = Math.min(rivalKokuCap(), f.koku + ri(f.koku*0.0025 + 1)); break;
-      case 'tonden': f.koku = Math.min(rivalKokuCap(), f.koku + ri(nai*0.16*Math.sqrt(1400/Math.max(700,f.koku)))); break;
+      case 'tonden': f.koku = Math.min(rivalKokuCap(), f.koku + ri(nai*0.16*(1 + 0.3*fDev(f,'shinden'))*Math.sqrt(1400/Math.max(700,f.koku)))); break;
       case 'drill': {
         const cap = ri(f.koku*0.18*(1+(f.fort||0)*0.03));
         if(f.money >= 25 && f.sol < cap){ f.money -= 25;
           f.sol = Math.min(cap, f.sol + ri((4 + f.koku/450 + (mB ? mB.bu*0.04 : 0)) * (S.year>=1570?1.4:1))); }
         break; }
-      case 'trade':  f.money += ri(8 + f.koku*0.012*(f.clanKind==='merchant'?1.6:1)); break;
+      case 'trade':  f.money += ri((8 + f.koku*0.012*(f.clanKind==='merchant'?1.6:1)) * (1 + 0.35*fDev(f,'bashaku'))); break;
       case 'fushin': {
         const c = FORT_COST(f.fort||0);
         f.build = (f.build||0) + ri(10 + nai*0.14);
@@ -2107,7 +2144,15 @@ function simRivalActions(lines){
       }
     }
     // ── 年貢餘剩:眾的歲入(石高的殘餘化為錢,商人更善生財)——沒錢什麼都養不起 ──
-    f.money = (f.money||0) + ri(f.koku * 0.02 * (f.clanKind==='merchant' ? 1.6 : 1));
+    f.money = (f.money||0) + ri(f.koku * 0.02 * (f.clanKind==='merchant' ? 1.6 : 1) * (1 + 0.35*fDev(f,'bashaku')));
+    // ── 家風特化:成長里程碑(石高 800/1500/2500)自動取得 ──
+    fDevGain(f, lines);
+    // ── 唐物交易:歲末機率橫財(大利與名物) ──
+    if(fDev(f,'karamono') && Math.random() < 0.20*fDev(f,'karamono')){
+      const kara = ri(35 + f.koku*0.04 + Math.random()*80);
+      f.money += kara; f.prestige += 1;
+      if(kara > 60 && Math.random() < 0.5) lines.push(`${fname(f)}轉手唐物獲大利 ${kara} 貫,名物入藏(威望 +1)。`);
+    }
     // ── 兵農未分離:領民即兵源——兵力向石高一成一自然回復(不花錢的民兵底線) ──
     {
       const floor2 = ri(f.koku * 0.11);
@@ -2428,7 +2473,8 @@ function simRivalOffers(){
   if(S.weather && S.weather.f < 0.88 && S.rice >= 250 && Math.random() < 0.35){
     const buyers = S.rivals.filter(f=>f.alive && f.lord !== 'player' && (f.money||0) >= 60 && pdist(f) <= NEIGHBOR_R);
     if(buyers.length){
-      const b = pick1(buyers);
+      const bh = buyers.filter(x=>fDev(x,'honai'));   // 保內商人網:消息靈通,求糴常著先鞭
+      const b = (bh.length && Math.random() < 0.6) ? pick1(bh) : pick1(buyers);
       const amt = 80 + ri(Math.random()*60);
       const price = ri(amt * riceRate() * 1.4);
       queueModal({title:`${fname(b)}——求糴`,
@@ -3116,7 +3162,8 @@ function foeArmyOf(f){          // 國人眾的兵種編成(家風為底,隨時�
   // 鐵砲普及:1553 種子島之後逐步、長篠(1575)之後加速;富家與湊口先得砲
   const era = clamp((S.year - 1553) / 42, 0, 1) * (S.year >= 1576 ? 1.45 : 1);
   const wealth = clamp((f.money||0) / 500, 0, 1);
-  let shift = clamp(era * (0.08 + 0.10*wealth) * ((f.clanKind==='merchant'||f.clanKind==='suigun') ? 1.5 : 1), 0, 0.28);
+  const toiya = 0.08 * fDev(f,'teppoya');   // 鐵砲問屋:堺商直供,銃比上限亦放寬
+  let shift = clamp(era * (0.08 + 0.10*wealth) * ((f.clanKind==='merchant'||f.clanKind==='suigun') ? 1.5 : 1) + toiya, 0, 0.28 + toiya);
   const p = {...base};
   const fromA = Math.min(p.ashigaru - 0.25, shift*0.55), fromY = Math.min(Math.max(0,p.yumi - 0.08), shift*0.45);
   p.ashigaru -= Math.max(0, fromA); p.yumi -= Math.max(0, fromY);
@@ -3293,7 +3340,7 @@ function simRivals(lines){
   for(const f of S.rivals.filter(f=>f.alive)){
     let mult = 0.5 + Math.random();
     if(S.weather && S.weather.f < 0.9){
-      mult *= 0.4;
+      mult *= fDev(f,'teibou') ? 0.85 : 0.4;   // 堤防強化:凶作之年田不受淹
       // 凶作米貴——商人與水軍趁勢囤售,饑年反而是他們的豐年(商人玩家也是這麼玩的)
       if(f.clanKind==='merchant' || f.clanKind==='suigun'){
         const spec = ri(f.koku * (f.clanKind==='merchant' ? 0.075 : 0.045));
@@ -3302,7 +3349,7 @@ function simRivals(lines){
       }
     }
     const era = S.year >= 1590 ? 1.4 : S.year >= 1570 ? 1.2 : 1;   // 亂世後期兼併加速
-    f.koku = Math.min(rivalKokuCap(), Math.max(100, ri(f.koku * (1 + (GROWTH[f.persona]||0.02)*mult*era))));
+    f.koku = Math.min(rivalKokuCap(), Math.max(100, ri(f.koku * (1 + (GROWTH[f.persona]||0.02)*(1 + 0.2*fDev(f,'tameike'))*mult*era))));
     if(f.persona==='名門' && Math.random() < 0.5) f.prestige += 1;
     if(Math.random() < 0.06){
       if(Math.random() < 0.12){ collapseRival(f, '當主暴斃且無嗣', lines); continue; }
@@ -3323,7 +3370,7 @@ function simRivals(lines){
       const tgt = sworn.length ? sworn.reduce((a,b)=> rGrudge(agg,a.id) >= rGrudge(agg,b.id) ? a : b)
                 : targets[Math.floor(Math.random()*targets.length)];
       const skirmish = (aidTroops)=>{
-        const pA = rSol(agg)*(1+(agg.fort||0)*0.1), pB = rSol(tgt)*(1+(tgt.fort||0)*0.28) + (aidTroops||0)*0.8;
+        const pA = rSol(agg)*(1+(agg.fort||0)*0.1), pB = rSol(tgt)*(1+(tgt.fort||0)*0.28)*(1 + 0.15*fDev(tgt,'shuun')) + (aidTroops||0)*0.8;
         const [w,l] = (Math.random() < pA/(pA+pB)) ? [agg,tgt] : [tgt,agg];
         const take = ri(l.koku*0.08);
         w.koku += take; l.koku -= take;
@@ -10528,6 +10575,8 @@ ${KIND_LABEL[f.clanKind]||'國人'}眾・家風:${f.persona}【${dip.tag}】—�
 `+
     `石高 ${f.koku}　威望 ${f.prestige}\n兵力 ${rSol(f)}　城砦 ${f.fort||0} 級　家財 ${f.money||0} 貫`+
     `\n📋 評定:${planLabel(f)}${f.plan?`(${PLANS[f.plan.type].desc})`:''}`+
+    (f.dev && Object.keys(f.dev).length ? `
+🏵 家風特化:${Object.keys(f.dev).map(k=>FDEV_META[k].name+(f.dev[k]>1?'×'+f.dev[k]:'')).join('・')}` : '')+
     (f.men && f.men.length ? `\n👥 家臣:${f.men.map(m=>`${m.fame?'⭐':''}${m.name}(武${m.bu}政${m.nai}智${m.chi})`).join('、')}` : `\n👥 家臣:無——耆老勉強視事`)+
     ((f.on||0) >= 10 ? `
 🎗 恩義:${f.on}——${f.on>=50?'重恩在身,危難時必有回報':f.on>=30?'記著你家的情分':'略欠人情'}` : '')+
