@@ -134,6 +134,11 @@
   .retainer select{flex:1 0 100%;margin-top:1px}
   .cardTitle{font-size:14px;font-weight:bold;border-left:4px solid var(--accent);padding-left:8px;margin-bottom:8px}
   #taskHint{font-size:12px;color:var(--ink2);min-height:32px;margin-top:6px;line-height:1.5}
+  #seasonBrief{font-size:12px;line-height:1.55;margin:2px 0 7px;padding:5px 8px;
+    background:rgba(122,94,58,.07);border-left:3px solid var(--accent2);border-radius:0 5px 5px 0}
+  #seasonBrief .sbWarn{color:var(--accent);font-weight:bold}
+  .rfit{font-size:11px;margin-left:4px}
+  .rfit b{font-weight:normal}
   .famRow{font-size:13px;padding:2px 0;line-height:1.6}
   .famRow canvas{vertical-align:-8px;margin-right:3px}
   /* 系譜繪卷 */
@@ -453,6 +458,7 @@
       <div class="card" id="dateBox"></div>
       <div class="card" id="taskBox">
         <div class="cardTitle">家臣派遣(每季一人一務)</div>
+        <div id="seasonBrief"></div>
         <div id="retainerList"></div>
         <div id="taskHint">選擇指令以查看說明。</div>
       </div>
@@ -523,7 +529,7 @@
 
 <script>
 'use strict';
-const BUILD = 'scn1';
+const BUILD = 'dsp1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -10234,6 +10240,65 @@ function adviceText(){
   return null;
 }
 // ---------- 畫面 ----------
+// ── 季回合決策帶:把散在各處的「這一季該想什麼」收進派遣畫面 ──
+function seasonBrief(){
+  if(!S) return '';
+  const L = [];
+  // 季令
+  L.push(['🌸 春:農務當令——今年收成的根,在此刻的田裡。',
+          '☀ 夏:農務當令(佳)——秋收前最後的照料。',
+          '🍁 秋:農務僅半效;本季末開鐮秋收。',
+          '❄ 冬:農閒——農務無效・狩獵倍獲,宜練兵普請休養。'][S.season]);
+  // 秋收展望(春~秋)
+  if(S.season <= 2 && !S.daimyoMode){
+    const laborNeed = S.kokudaka / 2;
+    const away = (S.warLabor || 0) * 3;
+    const laborF = clamp((S.pop - away) / laborNeed, 0, 1);
+    const est = ri(S.kokudaka * (1 + S.farmWork/100) * (1 + S.suiri*0.021 + skR('suiri','tameike')*0.05) * laborF);
+    L.push(`秋收展望(平年計):總穫約 ${est} 石・年貢入倉約 ${ri(est*S.taxRate)} 石` +
+      (laborF < 1 ? `<span class="sbWarn">——⚠ 勞力缺約 ${ri(laborNeed + away - S.pop)} 人,部分田將拋荒${away?`(軍役離田 ${away} 人)`:''}</span>` : ''));
+  }
+  // 歲末兵糧
+  { const nofu = (S.army.ashigaru||0) + (S.army.yumi||0);
+    const jobi = Math.max(0, S.soldiers - nofu);
+    const upkeep = ri(nofu * 1.4 + jobi * 3.4);
+    if(upkeep > 0 && (S.rice < upkeep * 1.25 || S.season === 3))
+      L.push((S.rice < upkeep ? `<span class="sbWarn">⚠ 歲末兵糧需約 ${upkeep} 石,存米僅 ${ri(S.rice)}——恐有士卒逃散</span>`
+                              : `歲末兵糧需約 ${upkeep} 石(存米 ${ri(S.rice)})`)); }
+  // 陣觸れ(軍役預告)
+  if(S.jinbure) L.push(`<span class="sbWarn">📯 陣觸れ:${LORD_META[S.jinbure.lord] ? LORD_META[S.jinbure.lord].name : ''}家軍役在即——留兵養銳,勿使精銳過勞</span>`);
+  else if(S.allegiance && S.warPair && (S.warCd||0) <= 0 && S.season !== 3)
+    L.push(`主家與${S.warPair ? (LORD_META[S.warPair[0]]&&LORD_META[S.warPair[1]] ? LORD_META[S.warPair[0]].name+'・'+LORD_META[S.warPair[1]].name+'相爭' : '鄰國') : ''}兵事未息——軍役徵召難料`);
+  // 技能樹未點
+  { const un = skUnspent('suiri') + skUnspent('trade');
+    if(un > 0) L.push(`🌿 技能樹有 ${un} 級未點(點頂欄「水利・商路」開樹)`); }
+  // 疲勞與臥病
+  { const tired = S.retainers.filter(r=>!r.spare && (r.sick||0)===0 && (r.stamina??100) < 40).length;
+    const sick = S.retainers.filter(r=>!r.spare && (r.sick||0) > 0).length;
+    const bits = [];
+    if(tired) bits.push(`😴 ${tired} 人疲勞(續使減效,宜輪休)`);
+    if(sick) bits.push(`🤒 ${sick} 人臥病`);
+    if(bits.length) L.push(bits.join('・')); }
+  return L.join('<br>');
+}
+// 指令適配標:當下這一手的季節與體力後果
+function taskFit(r){
+  const t = r.task, sta = r.stamina ?? 100, T = TASKS[t] || {};
+  const tags = [];
+  if(t === 'farm'){
+    if(S.season === 3) tags.push(['⚠冬農無效','loyLow']);
+    else if(S.season === 2) tags.push(['秋半效','dim']);
+    else tags.push(['當令','']);
+  }
+  if(t === 'hunt' && S.season === 3) tags.push(['冬倍獲','']);
+  if(t === 'educate' && !(S.children||[]).some(c=>c.age >= 5 && c.age <= 14)) tags.push(['無適齡・同休養','dim']);
+  if(t !== 'rest' && (r.sick||0) === 0){
+    if(sta < 25) tags.push(['⚠過勞之虞','loyLow']);
+    else if(sta < 50) tags.push(['減效','dim']);
+    else if(sta - (T.tire||0) < 25) tags.push(['將入疲勞','dim']);
+  }
+  return tags;
+}
 function render(){
   { const ab = $('adviceBox');
     if(ab){ const adv = adviceText();
@@ -10261,6 +10326,7 @@ function render(){
   $('dateBox').innerHTML = `<span class="era">${eraName(S.year)}</span>(${S.year})<span class="seasonTag s${S.season}">${['🌸','☀','🍁','❄'][S.season]} ${SEASONS[S.season]}</span>`+
     `<button id="btnSaveNow" class="ghost mini${S._dirty?' dirty':''}" title="手動保存(本作不自動存檔)">💾 保存${S._dirty?'●':''}</button>`;
   $('btnSaveNow').onclick = saveNow;
+  { const sb = $('seasonBrief'); if(sb){ const t = seasonBrief(); sb.innerHTML = t; sb.style.display = t ? '' : 'none'; } }
   // 家臣
   const list = $('retainerList');
   list.innerHTML = '';
@@ -10281,7 +10347,9 @@ function render(){
     }
     if(TASKS[r.task] && TASKS[r.task].clan && TASKS[r.task].clan !== S.clanType) r.task = 'rest';
     if(S.daimyoMode && r.task && r.task.indexOf('bugyo_') !== 0 && r.task !== 'educate' && r.task !== 'rest') r.task = 'rest';
-    sel.onchange = () => { r.task = sel.value; $('taskHint').textContent = TASKS[sel.value].hint; save(); };
+    sel.onchange = () => { r.task = sel.value; $('taskHint').textContent = TASKS[sel.value].hint;
+      const fe = $('rfit_'+i); if(fe) fe.innerHTML = taskFit(r).map(([t2,c2])=>`<b class="${c2}">${t2}</b>`).join('・');
+      save(); };
     sel.onfocus  = () => { $('taskHint').textContent = TASKS[r.task].hint; };
     const isSick = (r.sick||0) > 0;
     sel.disabled = isSick;
@@ -10290,8 +10358,9 @@ function render(){
     const staHtml = ` <span class="${sta<25?'staLow':''}">體${sta}</span>`;
     ensureApt(r);
     const isTaisho = S.taishoId === r.name;
+    const fitHtml = ()=> taskFit(r).map(([t2,c2])=>`<b class="${c2}">${t2}</b>`).join('・');
     row.innerHTML = `<div class="rname">${r.name}${isTaisho?' <b style="color:var(--accent)">◆</b>':''}<small>${r.role}・${r.age}歲${traitTag(r)}${isSick?'・<span class="loyLow">🤒病中</span>':''}</small></div>`+
-                    `<div class="rstats">武${r.bu} 政${r.nai} 智${r.chi}　功${r.merit||0}${loy}${staHtml}<br><span style="color:var(--accent2)">${APT_NAME[r.apt]}${r.apt2?`・${APT_NAME[r.apt2]}`:''}</span></div>`;
+                    `<div class="rstats">武${r.bu} 政${r.nai} 智${r.chi}　功${r.merit||0}${loy}${staHtml}<br><span style="color:var(--accent2)">${APT_NAME[r.apt]}${r.apt2?`・${APT_NAME[r.apt2]}`:''}</span><span class="rfit" id="rfit_${i}">${fitHtml()}</span></div>`;
     row.querySelector('.rname').onclick = () => openRetainer(i);
     const fc = faceCanvas(r, 36);
     fc.className = 'face ' + (r.kind==='一門' ? 'k-ichimon' : r.kind==='浪人' ? 'k-ronin' : 'k-fudai');
