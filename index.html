@@ -521,7 +521,7 @@
 
 <script>
 'use strict';
-const BUILD = 'dv1';
+const BUILD = 'fx1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1197,6 +1197,11 @@ function migrate(s){
         if(nf.lord && nf.lord !== 'player' && (!s.lords[nf.lord] || s.lords[nf.lord].alive === false)) nf.lord = null;
         s.rivals.push(nf);
       }
+    }
+  }
+  { // 家風特化欄位補齊:舊檔以石高反推已過里程碑(不補發,免讀檔即全境暴增)
+    for(const f of (s.rivals||[])){
+      if(f.devN == null){ f.dev = f.dev || {}; f.devN = [800,1500,2500].filter(m=>(f.koku||0) >= m).length; }
     }
   }
   { // 居館座標依現行地理校正(諏訪/木曾/水野/西鄉曾錯置;座標純屬地圖與地緣,同步無害)
@@ -3184,6 +3189,7 @@ function conquestWar(f){
   // 城級=居城規模(石高)+歷年築城投資——苦心經營城砦的眾,攻起來就該付出代價
   const fortLv = Math.min(5, 1 + Math.floor(f.koku/900) + (f.fort||0));
   const go = (mode)=>{
+    if(FB){ log('軍評定未散,不可再啟戰端。','bad'); return; }   // 再入保護:前場 onEnd 未結不開新戰
     if(S.rice < sent){ log('兵糧不足,大軍未能開拔。','bad'); return; }
     S.rice -= sent;
     warCosts(f, sent);
@@ -3193,7 +3199,8 @@ function conquestWar(f){
         // 兵損回填:出陣者之折損自 S.army 扣除
         const remain = {ashigaru:0,yumi:0,kiba:0,teppo:0};
         res.myRemain.forEach(u=>U_KEYS.forEach(k=>{ remain[k] += u.army[k]||0; }));
-        U_KEYS.forEach(k=>{ S.army[k] = Math.max(0, (S.army[k]||0) - Math.max(0, (sentArmy[k]||0) - remain[k])); });
+        const dep = res.deployed || sentArmy;   // 實際佈陣量(佈陣減兵者,留守兵不計損)
+        U_KEYS.forEach(k=>{ S.army[k] = Math.max(0, (S.army[k]||0) - Math.max(0, (dep[k]||0) - remain[k])); });
         S.soldiers = armyTotal(S.army);
         const foeInit = res.foeRemain.reduce((a,u)=>a+u.army.__init||0,0);
         const foeLeft = res.foeRemain.reduce((a,u)=>a+armyTotal(u.army),0);
@@ -3287,6 +3294,7 @@ function conquestWar(f){
 // 家族滅亡與瓜分
 function collapseRival(f, cause, lines){
   f.alive = false;
+  f.dev = {};   // 家亡藝絕:特化不遺留
   S.allies = S.allies.filter(a => a !== f.name);
   const rest = S.rivals.filter(x=>x.alive);
   const strongest = rest.length ? rest.reduce((a,b)=>score(a)>=score(b)?a:b) : null;
@@ -5934,8 +5942,11 @@ function terraDraw(f){   // 交戰地形依守方地域加權抽取
   return 'plain';
 }
 function fbClone(o){ return JSON.parse(JSON.stringify(o)); }
+function fbSeedRng(seed){ let t = seed>>>0; return function(){ t += 0x6D2B79F5; let r = Math.imul(t ^ t>>>15, t | 1); r ^= r + Math.imul(r ^ r>>>7, r | 61); return ((r ^ r>>>14) >>> 0) / 4294967296; }; }
 function fbRun(cfg){
   const savedKS = KS, savedBT = BT;
+  const savedRnd = (cfg.seed != null) ? Math.random : null;   // 帶種子=可重演(采配拼接用)
+  if(savedRnd) Math.random = fbSeedRng(cfg.seed);
   try{
     const my = fbClone(cfg.my), foe = fbClone(cfg.foe);
     [...my, ...foe].forEach(u=>{ u.init = armyTotal(u.army); u.broke = false;
@@ -6044,6 +6055,7 @@ function fbRun(cfg){
     };
   }finally{
     KS = savedKS; BT = savedBT;
+    if(savedRnd) Math.random = savedRnd;
   }
 }
 // ── 軍師與三案生成 ──
@@ -6160,7 +6172,7 @@ function fbCouncilFlow(f, sentArmy, onEnd){
   const terraTxt = {plain:'平野',mountain:'山道險隘',river:'川原'}[P.terrain] || P.terrain;
   queueModal({
     title:`⚔ 軍評定——${fname(f)}攻略`,
-    body:`軍師 ${advTxt} 於帳中鋪開絵圖:\n「彼處${terraTxt},天候${({sunny:'晴',rain:'雨',fog:'霧',wind:'風'})[P.weather]||P.weather}。守方得地利。諸案在此,請主君決斷。」\n\n(勝算與損兵為軍師之見——智略愈高,所見愈真)`,
+    body:`軍師 ${advTxt} 於帳中鋪開絵圖:\n「彼處${terraTxt},天候${({clear:'晴',sunny:'晴',rain:'雨',fog:'霧',wind:'風'})[P.weather]||P.weather}。守方得地利。諸案在此,請主君決斷。」\n\n(勝算與損兵為軍師之見——智略愈高,所見愈真)`,
     choices: P.proposals.map(pl=>({
       label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵約${pl.avgLoss}`,
       sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait),
@@ -6192,7 +6204,9 @@ function fbAdjustModal(pl){
     hud: hud(),
     body:`可調各備兵種員額(總和不逾出陣之兵)。調畢即開戰——開戰後全軍自動進退,唯士氣轉折時可下一次采配。`,
     choices:[
-      {label:'開戰!', fn:()=>{ fbBattleStart(); }},
+      {label:'開戰!', fn:()=>{
+        if(pl.cfg.my.reduce((a,u)=>a+armyTotal(u.army),0) <= 0){ log('無兵可戰——請先佈兵。','bad'); fbAdjustModal(pl); return; }
+        fbBattleStart(); }},
       {label:'改案——回軍評定', fn:()=>{ fbCouncilReopen(); }}
     ]
   });
@@ -6221,10 +6235,15 @@ function fbSetTroop(i, k, v){
   if(hudEl && FB.adjHud) hudEl.innerHTML = FB.adjHud();
 }
 // ── 開戰:先算完,再重播 ──
+let fbGen = 0;
 function fbBattleStart(){
   const pl = FB.chosen;
+  pl.cfg.seed = (Math.random()*1e9)|0;   // 定種:采配重演同種前段一致,靜觀不致翻盤
+  FB.deployed = {ashigaru:0,yumi:0,kiba:0,teppo:0};
+  pl.cfg.my.forEach(u=>U_KEYS.forEach(k=>{ FB.deployed[k] += u.army[k]||0; }));
   const r = fbRun(fbClone(pl.cfg));
   FB.result = r; FB.idx = 0; FB.fast = false; FB.paused = false; FB.done = false;
+  FB.gen = ++fbGen;
   // 采配時點:計略刻(3)或首次我軍士氣總降幅≥12 的刻
   let sai = 0;
   for(let i=2; i<r.rounds.length; i++){
@@ -6269,7 +6288,7 @@ function fbSaiHtml(){
   FB.paused = true;
   return `<div id="fbSai"><b>🥁 采配の時</b>——戰局鬆動,主君可下一令:<br>`+
     `<button class="ksbtn" onclick="fbSai('toku')">親臨督戰(全軍+8氣)</button> `+
-    `<button class="ksbtn ghost" onclick="fbSai('yobi')">投入後備</button> `+
+    (FB.chosen.cfg.my.some(u=>u.pos==='dono') ? `<button class="ksbtn ghost" onclick="fbSai('yobi')">投入後備</button> ` : '')+
     `<button class="ksbtn ghost" onclick="fbSai('none')">靜觀其變</button></div>`;
 }
 function fbSai(ord){
@@ -6281,7 +6300,9 @@ function fbSai(ord){
     cfg2.saiOrd = ord; cfg2.saiRound = FB.saiRound;
     const r2 = fbRun(cfg2);
     // 拼接:已看過的前段保留,采配之後採新演算
-    FB.result = { ...r2, rounds: FB.result.rounds.slice(0, FB.saiRound).concat(r2.rounds.slice(FB.saiRound)) };
+    FB.result = (r2.rounds.length <= FB.saiRound)
+      ? r2   // 短打局:重演在采配刻前已終——整段採新演算,不留舊幀假象
+      : { ...r2, rounds: FB.result.rounds.slice(0, FB.saiRound).concat(r2.rounds.slice(FB.saiRound)) };
     if(FB.idx >= FB.result.rounds.length) FB.idx = FB.result.rounds.length - 1;
   }
   fbFrame();
@@ -6295,8 +6316,10 @@ function fbTick(){
   if(FB.idx >= FB.result.rounds.length - 1){ fbFinish(); return; }
   const fr = FB.result.rounds[FB.idx];
   const delay = (fr.units.some(u=>u.clash) ? 1900 : 1250) / (FB.fast ? 2 : 1);
-  setTimeout(()=>{
-    if(!FB || FB.done || FB.paused) return;
+  const g = FB.gen;
+  clearTimeout(FB.timer);   // 單一計時器:暫停/續播連按不生雙鏈
+  FB.timer = setTimeout(()=>{
+    if(!FB || FB.gen !== g || FB.done || FB.paused) return;   // 世代不符=前場殘留,棄之
     FB.idx += 1;
     fbFrame();
     if(FB.saiRound && FB.idx === FB.saiRound && !FB.saiUsed && !FB.saiAsked) return;   // 停等采配
@@ -6323,13 +6346,13 @@ function fbDebrief(){
       : `軍師自責:「智者千慮——此敗在某,非戰之罪。」`;
     if(P.adv) P.adv.merit = (P.adv.merit||0) + 2;
   }
-  queueModal({
+  queueModal({ front:true,   // 戰後檢討插隊首:縱有事件排隊,先結此戰
     title:`【${r.win?'勝':'敗'}】${fname(FB.f)}攻略——軍議の選択`,
     body:`採「${pl.name}」(軍師所見勝算${fbOddsTxt(pl.seenWin,pl.seenBand)})\n`+
       `地形:${({plain:'平野',mountain:'山道',river:'川原'})[P.terrain]}(守方地利+${ri((fbDefMul(P.terrain)-1)*100)}%)`+
       `${r.kisakuNote ? '・計略:' + r.kisakuNote : ''}${FB.saiUsed ? '・采配:' + (FB.saiUsed==='toku'?'親臨督戰':'投入後備') : ''}\n`+
       `───── 戰場關鍵 ─────\n${keyEv.join('\n') || '兩軍相持,以力決之。'}\n─────────────\n${review}`,
-    choices:[{label:'領命', fn:()=>{ const cb = FB.onEnd; const res = FB.result; FB = null; if(cb) cb(res); }}]
+    choices:[{label:'領命', fn:()=>{ const cb = FB.onEnd; const res = FB.result; res.deployed = FB.deployed; FB = null; if(cb) cb(res); }}]
   });
   pumpModal();
 }
@@ -6762,7 +6785,7 @@ function ksHexResolve(){
   ev.filter(l=>/崩潰|裏切り|討取|據(渡口|高地)|放銃催促|陣前離脫|引き揚げ/.test(l)).forEach(l=>{
     KS.chron.push(`${tStr} ─ ${l.replace(/^[⚠🎉⚡☠⚑🔥\s]+/,'')}`);
   });
-  KS.hist = ev;
+  if(KS.fieldMode) KS.hist.push(...ev); else KS.hist = ev;   // 軍評定:append-only,fbRun 逐刻切片
   { const tot = arr => arr.reduce((a,x)=>a+(x.broke?0:ksTotal(x)),0);
     const mor = arr => { const l=arr.filter(x=>!x.broke); return l.length?ri(l.reduce((a,x)=>a+x.mor,0)/l.length):0; };
     KS.full.push(`── 第 ${H.round} 陣(盤上)　我 ${tot(KS.my)}兵/士氣${mor(KS.my)}　敵 ${tot(KS.foe)}兵/士氣${mor(KS.foe)} ──`);
@@ -10020,7 +10043,7 @@ function queueModal(m){
       return;
     }
   }catch(e){}
-  modalQueue.push(m);
+  if(m && m.front) modalQueue.unshift(m); else modalQueue.push(m);
 }
 function pumpModal(){
   if(!$('modalBack').classList.contains('hidden')) return;
