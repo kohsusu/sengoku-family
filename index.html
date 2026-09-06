@@ -414,6 +414,7 @@
       <button class="ghost" style="padding:2px 8px" onclick="setLang('zh')">中文</button>
       <button class="ghost" style="padding:2px 8px" onclick="setLang('en')">English</button>
       <button class="ghost" style="padding:2px 8px" onclick="setLang('ja')">日本語</button>
+      <button class="ghost" id="btnSfxT" style="padding:2px 8px" onclick="auUnlock();sfxToggle()">🔊 音效</button>
     </div>
     <h1>戰國家族記</h1>
     <div class="sub">— 亂世夾縫中的小豪族 —</div>
@@ -529,7 +530,7 @@
 
 <script>
 'use strict';
-const BUILD = 'dsp1';
+const BUILD = 'au1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -987,7 +988,132 @@ function toKanjiNum(n){
   if(n<20) return '十'+d[n%10];
   return d[Math.floor(n/10)]+'十'+(n%10?d[n%10]:'');
 }
+// ══════════ 音(WebAudio 純合成:陣太鼓・法螺貝・鉦・箏——零資產,參數化) ══════════
+const AU = { ctx:null, master:null, on:true, vol:0.7, unlocked:false, last:{} };
+try{
+  AU.on  = localStorage.getItem('sengoku_sfx') !== '0';
+  AU.vol = parseFloat(localStorage.getItem('sengoku_vol') || '0.7');
+}catch(e){}
+function auInit(){
+  if(AU.ctx) return AU.ctx;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return null;
+  try{
+    AU.ctx = new AC();
+    const comp = AU.ctx.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.ratio.value = 6;
+    AU.master = AU.ctx.createGain();
+    AU.master.gain.value = AU.on ? AU.vol : 0;
+    AU.master.connect(comp); comp.connect(AU.ctx.destination);
+  }catch(e){ AU.ctx = null; }
+  return AU.ctx;
+}
+function auUnlock(){
+  if(AU.unlocked) return;
+  const ctx = auInit(); if(!ctx) return;
+  try{
+    const b = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource(); src.buffer = b;
+    src.connect(ctx.destination); src.start(0);
+    if(ctx.resume) ctx.resume();
+    AU.unlocked = true;
+  }catch(e){}
+}
+if(typeof document !== 'undefined' && document.addEventListener){
+  document.addEventListener('pointerdown', auUnlock, {once:true, capture:true});
+  document.addEventListener('touchend', auUnlock, {once:true, capture:true});
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden && AU.ctx && AU.ctx.state === 'suspended' && AU.ctx.resume) AU.ctx.resume();
+  });
+}
+// primitives
+function auTaiko(c,o,t,f0,f1,dur,g){
+  const osc=c.createOscillator(), gn=c.createGain();
+  osc.type='sine'; osc.frequency.setValueAtTime(f0,t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(20,f1), t+dur*0.5);
+  gn.gain.setValueAtTime(g,t); gn.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  osc.connect(gn); gn.connect(o); osc.start(t); osc.stop(t+dur+0.02);
+  const nb=c.createBuffer(1,ri(c.sampleRate*0.03),c.sampleRate), d=nb.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const ns=c.createBufferSource(); ns.buffer=nb;
+  const nf=c.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=400;
+  const ng=c.createGain(); ng.gain.setValueAtTime(g*0.5,t); ng.gain.exponentialRampToValueAtTime(0.001,t+0.06);
+  ns.connect(nf); nf.connect(ng); ng.connect(o); ns.start(t);
+}
+function auKane(c,o,t,f,dur,g){
+  [[1,1],[1.503,0.5],[2.41,0.25]].forEach(([m,gg])=>{
+    const osc=c.createOscillator(), gn=c.createGain();
+    osc.type='sine'; osc.frequency.value=f*m;
+    gn.gain.setValueAtTime(g*gg,t);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + dur*(m>1?0.45:1));
+    osc.connect(gn); gn.connect(o); osc.start(t); osc.stop(t+dur+0.05);
+  });
+}
+function auKoto(c,o,t,f,dur,g){
+  const osc=c.createOscillator(), gn=c.createGain(), fl=c.createBiquadFilter();
+  osc.type='sawtooth'; osc.frequency.value=f;
+  fl.type='lowpass'; fl.frequency.setValueAtTime(3000,t);
+  fl.frequency.exponentialRampToValueAtTime(600,t+dur);
+  gn.gain.setValueAtTime(g,t); gn.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  osc.connect(fl); fl.connect(gn); gn.connect(o); osc.start(t); osc.stop(t+dur+0.02);
+}
+function auHoragai(c,o,t,f,dur,g){
+  const osc=c.createOscillator(), gn=c.createGain();
+  osc.type='sawtooth'; osc.frequency.setValueAtTime(f,t);
+  osc.frequency.linearRampToValueAtTime(f*1.06, t+dur*0.3);
+  gn.gain.setValueAtTime(0.001,t); gn.gain.linearRampToValueAtTime(g, t+0.09);
+  gn.gain.setValueAtTime(g, t+dur-0.3); gn.gain.linearRampToValueAtTime(0.001, t+dur);
+  osc.connect(gn); gn.connect(o); osc.start(t); osc.stop(t+dur+0.05);
+}
+function auClick(c,o,t,g){
+  const nb=c.createBuffer(1,ri(c.sampleRate*0.045),c.sampleRate), d=nb.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const ns=c.createBufferSource(); ns.buffer=nb;
+  const bf=c.createBiquadFilter(); bf.type='bandpass'; bf.frequency.value=2200; bf.Q.value=3;
+  const gn=c.createGain(); gn.gain.setValueAtTime(g,t); gn.gain.linearRampToValueAtTime(0.001,t+0.045);
+  ns.connect(bf); bf.connect(gn); gn.connect(o); ns.start(t);
+}
+const SFXDEF = {
+  click:  (c,o,t)=>{ auClick(c,o,t,0.22); },
+  good:   (c,o,t)=>{ auKoto(c,o,t,587,0.5,0.30); auKoto(c,o,t+0.06,880,0.5,0.26); },
+  bad:    (c,o,t)=>{ auKoto(c,o,t,330,0.55,0.30); auKoto(c,o,t+0.07,247,0.6,0.28); auTaiko(c,o,t,90,50,0.25,0.18); },
+  season: (c,o,t,op)=>{ auKane(c,o,t,[880,988,784,659][(op&&op.s)||0],1.4,0.26); },
+  horagai:(c,o,t)=>{ auHoragai(c,o,t,175,1.2,0.30);
+    [0,1,2].forEach(i=>auTaiko(c,o,t+0.7+i*0.22,130,60,0.4,0.32)); },
+  win:    (c,o,t)=>{ let tt=t; [250,180,130].forEach(ms=>{ auTaiko(c,o,tt,130,60,0.35,0.34); tt+=ms/1000; });
+    auKane(c,o,tt,1047,2.0,0.28); auKoto(c,o,tt+0.1,784,0.4,0.22); auKoto(c,o,tt+0.22,988,0.4,0.22); auKoto(c,o,tt+0.34,1175,0.5,0.24); },
+  lose:   (c,o,t)=>{ auTaiko(c,o,t,100,42,0.5,0.36); auKane(c,o,t+0.5,392,2.2,0.26); },
+  metsubou:(c,o,t)=>{ auTaiko(c,o,t,80,35,0.8,0.4); auKane(c,o,t+0.5,311,4.0,0.3); }
+};
+function sfx(name, opt){
+  if(!AU.on || !AU.unlocked) return;
+  const ctx = auInit(); if(!ctx) return;
+  try{
+    if(ctx.state === 'suspended' && ctx.resume) ctx.resume();
+    const now = ctx.currentTime;
+    if(AU.last[name] && now - AU.last[name] < 0.07) return;   // 同名音節流
+    AU.last[name] = now;
+    (SFXDEF[name] || (()=>{}))(ctx, AU.master, now, opt || {});
+  }catch(e){}
+}
+// log 音效同幀合併:一輪只播最重的一聲(bad>good),endSeason 十連報不成機關槍
+let _sfxPend = null;
+function logSfx(cls){
+  if(cls !== 'good' && cls !== 'bad') return;
+  if(_sfxPend === 'bad') return;
+  _sfxPend = (cls === 'bad') ? 'bad' : (_sfxPend || 'good');
+  Promise.resolve().then(()=>{ if(_sfxPend){ sfx(_sfxPend); _sfxPend = null; } });
+}
+function sfxToggle(){
+  AU.on = !AU.on;
+  try{ localStorage.setItem('sengoku_sfx', AU.on ? '1' : '0'); }catch(e){}
+  if(AU.master) AU.master.gain.value = AU.on ? AU.vol : 0;
+  const b1 = $('btnSfx'); if(b1) b1.textContent = AU.on ? '🔊' : '🔇';
+  const b2 = $('btnSfxT'); if(b2) b2.textContent = AU.on ? '🔊 音效' : '🔇 靜音';
+}
+try{ const bt=document.getElementById('btnSfxT'); if(bt) bt.textContent = AU.on ? '🔊 音效' : '🔇 靜音'; }catch(e){}
 function log(msg, cls){
+  try{ logSfx(cls); }catch(e){}
   const box = $('logBox');
   const div = document.createElement('div');
   if(cls) div.className = cls;
@@ -999,6 +1125,7 @@ function log(msg, cls){
   box.scrollTop = box.scrollHeight;
 }
 function logYear(){
+  try{ sfx('season', {s:S.season}); }catch(e){}
   const div = document.createElement('div');
   div.className = 'y';
   div.textContent = `── ${eraName(S.year)}(${S.year})${SEASONS[S.season]} ──`;
@@ -5578,6 +5705,7 @@ function ksSetPos(i, p){
 // ══════════ 合戰 ══════════
 function ksStart(hexMode){
   if(!KS) return;
+  try{ sfx('horagai'); }catch(e){}
   // 本陣校正
   const hons = KS.my.filter(s=>s.pos==='hon');
   if(hons.length !== 1){
@@ -6322,6 +6450,7 @@ function fbSetTroop(i, k, v){
 // ── 開戰:先算完,再重播 ──
 let fbGen = 0;
 function fbBattleStart(){
+  try{ sfx('horagai'); }catch(e){}
   const pl = FB.chosen;
   pl.cfg.seed = (Math.random()*1e9)|0;   // 定種:采配重演同種前段一致,靜觀不致翻盤
   FB.deployed = {ashigaru:0,yumi:0,kiba:0,teppo:0};
@@ -6443,6 +6572,7 @@ function fbFinish(){
 }
 function fbDebrief(){
   const r = FB.result, pl = FB.chosen, P = FB.P;
+  try{ sfx(r.win ? 'win' : 'lose'); }catch(e){}
   const keyEv = (r.chron && r.chron.length)
     ? r.chron.slice(0, 7)
     : r.rounds.flatMap(x=>x.events).filter(e=>/崩潰|伏兵|誘敵|討取|見破|總崩|引き揚げ|督戰|預備/.test(e)).slice(0,6);
@@ -7424,6 +7554,7 @@ function ksSekiEnd(win){
 }
 function ksEnd(win){
   if(!KS) return;
+  try{ sfx(win ? 'win' : 'lose'); }catch(e){}
   if(KS.scenario){ return ksSekiEnd(win); }
   const T = LORD_META[KS.target], L = S.lords[KS.target] || {demesne:0, favor:0};
   const lines = [];
@@ -8128,6 +8259,7 @@ const HISTORY = [
        [
          {label:'入城,與豐臣共存亡', sub:'⚠ 滅亡結局:忠義之名,永傳後世', fn:()=>{
            S.gameOver = true;
+           try{ sfx('metsubou'); }catch(e){}
            queueModal({title:'炎上——大坂落城',
              body:`五月八日,大坂城天守閣陷入火海。\n${S.famName}家一門,與豐臣家共赴最後一戰,盡數討死。\n\n家名雖絕,「三河${S.famName},義不背主」之名,\n與真田幸村並傳於講談三百年。\n\n——這也是一種戰國的活法。`,
              choices:[{label:'重新開始', fn:()=>{ localStorage.removeItem(SLOT_KEY(curSlot)); location.reload(); }}]});
@@ -8634,6 +8766,7 @@ function succession(lines, cause){
     return;
   }
   S.gameOver = true;
+  try{ sfx('metsubou'); }catch(e){}
   lines.push(`☠ ${S.famName}家後繼無人——家名斷絕。`);
 }
 
@@ -10214,6 +10347,7 @@ function pumpModal(){
     }
     b.innerHTML = c.label + (c.sub ? `<small>${c.sub}</small>` : '');
     b.onclick = () => {
+      auUnlock(); try{ sfx('click'); }catch(e){}
       $('modalBack').classList.add('hidden');
       c.fn();
       save();
@@ -10324,8 +10458,10 @@ function render(){
     KAMON[S.kamon||0].draw(kc, 11, 11, 9.5, '#ffd98a', '#3a2f24'); }
   // 日期
   $('dateBox').innerHTML = `<span class="era">${eraName(S.year)}</span>(${S.year})<span class="seasonTag s${S.season}">${['🌸','☀','🍁','❄'][S.season]} ${SEASONS[S.season]}</span>`+
-    `<button id="btnSaveNow" class="ghost mini${S._dirty?' dirty':''}" title="手動保存(本作不自動存檔)">💾 保存${S._dirty?'●':''}</button>`;
+    `<button id="btnSaveNow" class="ghost mini${S._dirty?' dirty':''}" title="手動保存(本作不自動存檔)">💾 保存${S._dirty?'●':''}</button>`+
+    `<button id="btnSfx" class="ghost mini" title="音效開關">${AU.on?'🔊':'🔇'}</button>`;
   $('btnSaveNow').onclick = saveNow;
+  { const bs = $('btnSfx'); if(bs) bs.onclick = ()=>{ auUnlock(); sfxToggle(); }; }
   { const sb = $('seasonBrief'); if(sb){ const t = seasonBrief(); sb.innerHTML = t; sb.style.display = t ? '' : 'none'; } }
   // 家臣
   const list = $('retainerList');
