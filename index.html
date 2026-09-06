@@ -521,7 +521,7 @@
 
 <script>
 'use strict';
-const BUILD = 'fx1';
+const BUILD = 'ux1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1972,9 +1972,14 @@ const rivalKokuCap = () => ri(8000 * (S.year>=1590 ? 1.4 : S.year>=1570 ? 1.2 : 
 const rGrudge = (f, id) => (f.grudge && f.grudge[id]) || 0;
 // ══════════ 眾的家風特化(f.dev):石高跨 800/1500/2500 里程碑自動取得,家業＋性格加權三選於八 ══════════
 const FDEV_META = {
-  tameike:{name:'溜池普請'}, shinden:{name:'新田開發'}, teibou:{name:'堤防強化'},
-  bashaku:{name:'馬借・問屋'}, teppoya:{name:'鐵砲問屋'}, shuun:{name:'舟運堀川'},
-  honai:{name:'保內商人網'}, karamono:{name:'唐物交易'}
+  tameike:{name:'溜池普請', desc:'其地歲入年年見長——早收則稅基愈厚'},
+  shinden:{name:'新田開發', desc:'墾田日廣,石高長勢勝於常家'},
+  teibou:{name:'堤防強化', desc:'凶作之年田不受淹,荒年難趁其虛'},
+  bashaku:{name:'馬借・問屋', desc:'錢糧豐盈養兵常多——其勢愈拖愈壯'},
+  teppoya:{name:'鐵砲問屋', desc:'堺商直供,其軍銃比高於常——收為與力則自帶銃隊'},
+  shuun:{name:'舟運堀川', desc:'據水而守,遲攻則城愈難拔'},
+  honai:{name:'保內商人網', desc:'售米結恩事半功倍,取引常客'},
+  karamono:{name:'唐物交易', desc:'唐物暴利,家財難測'}
 };
 const fDev = (f,k)=> ((f.dev||{})[k])||0;
 function fDevPick(f){   // 可重複取同技升級(每技上限2級)
@@ -6047,6 +6052,7 @@ function fbRun(cfg){
     }
     return {
       win: !!KS.fieldWin,
+      chron: (KS.chron || []).slice(),   // 時刻年表:覆盤直用,不再從原句撈
       rounds, kisakuNote,
       kills: (KS.killed || []).slice(),
       nRounds: KS.hex ? KS.hex.round : rounds.length - 1,
@@ -6142,9 +6148,11 @@ function fbPropose(f, sentArmy){
     }
     const trueWin = w/NR;
     const seen = clamp(trueWin + (Math.random()*2-1)*noise/100, 0.03, 0.97);
-    return { ...pl, cfg, trueWin,
+    const avgLoss = ri(lossSum/NR);
+    const seenLoss = Math.max(0, ri(avgLoss * (1 + (Math.random()*2-1)*noise/100*1.2)));   // 損兵同套迷霧:庸才連血價都看不準
+    return { ...pl, cfg, trueWin, avgLoss,
       seenWin: seen, seenBand: Math.max(0.06, noise/100),
-      avgLoss: ri(lossSum/NR), brokeP: brokeN/NR };
+      seenLoss, lossBand: Math.max(8, ri(avgLoss*noise/100*1.5)), brokeP: brokeN/NR };
   });
   return { adv, chi, terrain, weather, foe, proposals: out };
 }
@@ -6174,12 +6182,16 @@ function fbCouncilFlow(f, sentArmy, onEnd){
     title:`⚔ 軍評定——${fname(f)}攻略`,
     body:`軍師 ${advTxt} 於帳中鋪開絵圖:\n「彼處${terraTxt},天候${({clear:'晴',sunny:'晴',rain:'雨',fog:'霧',wind:'風'})[P.weather]||P.weather}。守方得地利。諸案在此,請主君決斷。」\n\n(勝算與損兵為軍師之見——智略愈高,所見愈真)`,
     choices: P.proposals.map(pl=>({
-      label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵約${pl.avgLoss}`,
-      sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait),
+      label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵${fbLossTxt(pl)}`,
+      sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait) + (pl.brokeP > 0.4 ? '(此案恐有備崩之虞)' : ''),
       fn: ()=>{ fbAdjustModal(pl); }
     }))
   });
   pumpModal();
+}
+function fbLossTxt(pl){
+  const lo = Math.max(0, pl.seenLoss - pl.lossBand), hi = pl.seenLoss + pl.lossBand;
+  return lo === hi ? '約' + hi : lo + '~' + hi;
 }
 function fbAdjustModal(pl){
   FB.chosen = pl;
@@ -6187,16 +6199,20 @@ function fbAdjustModal(pl){
     const foeMix = {ashigaru:0,yumi:0,kiba:0,teppo:0};
     FB.P.foe.forEach(u=>U_KEYS.forEach(k=>{foeMix[k]+=u.army[k]||0;}));
     const UN = {ashigaru:'足輕',yumi:'弓',kiba:'騎',teppo:'銃'};
-    let h = `<table class="kstbl"><tr><th>備</th><th>大將</th>${U_KEYS.map(k=>`<th>${UN[k]}</th>`).join('')}<th>戰力</th></tr>`;
+    const avail = k => Math.max(0, (FB.sentArmy[k]||0) - pl.cfg.my.reduce((a,u)=>a+(u.army[k]||0),0));
+    let h = `<table class="kstbl"><tr><th>備</th><th>大將</th>${U_KEYS.map(k=>`<th>${UN[k]}<br><span class="dim" id="fbav_${k}" style="font-size:10px">殘${avail(k)}</span></th>`).join('')}<th>戰力</th></tr>`;
     pl.cfg.my.forEach((u,i)=>{
       const pow = ri(ksStrength({...u, pos:u.pos}, 'charge', {weather:FB.P.weather, terrain:FB.P.terrain}, foeMix));
       h += `<tr><td><b>${u.name}</b></td><td>${u.gen.name}<br><span class="dim" style="font-size:11px">武${u.gen.bu}・${aptLabel(u.gen)||'—'}</span></td>`+
-        U_KEYS.map(k=>`<td><input class="kstin" type="number" min="0" value="${u.army[k]||0}" onchange="fbSetTroop(${i},'${k}',this.value)"></td>`).join('')+
-        `<td class="kspow">${pow}</td></tr>`;
+        U_KEYS.map(k=>`<td><input class="kstin" id="fbin_${i}_${k}" type="number" min="0" value="${u.army[k]||0}" onchange="fbSetTroop(${i},'${k}',this.value)"></td>`).join('')+
+        `<td class="kspow" id="fbpow_${i}">${pow}</td></tr>`;
     });
-    const myTot = pl.cfg.my.reduce((a,u)=>a+armyTotal(u.army),0);
+    // 敵陣編成:物見所報——counterplay 資訊在此(鐵砲特化眾自此可讀)
     const foeTot = FB.P.foe.reduce((a,u)=>a+armyTotal(u.army),0);
-    return h + `</table><div class="kssum">我軍 <b>${myTot}</b> vs 敵軍 <b>${foeTot}</b>(守方地利 +${ri((fbDefMul(FB.P.terrain)-1)*100)}%)</div>`;
+    const teppoShare = foeMix.teppo / Math.max(1, foeTot);
+    h += `</table><div class="kssum" style="margin-top:4px">敵陣:${U_KEYS.map(k=>`${UN[k]}${foeMix[k]}`).join('・')}`+
+      (teppoShare > 0.18 ? `<br><span style="color:var(--accent)">⚠ 軍師低語:「彼陣銃多——非疾趨貼身,不可與之對射。」</span>` : '') + `</div>`;
+    return h + `<div class="kssum" id="fbsum">${fbSumHtml()}</div>`;
   };
   FB.adjHud = hud;
   queueModal({
@@ -6218,21 +6234,36 @@ function fbCouncilReopen(){
     title:`⚔ 軍評定——${fname(FB.f)}攻略`,
     body:`軍師再展絵圖,靜候決斷。`,
     choices: P.proposals.map(pl=>({
-      label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵約${pl.avgLoss}`,
-      sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait),
+      label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵${fbLossTxt(pl)}`,
+      sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait) + (pl.brokeP > 0.4 ? '(此案恐有備崩之虞)' : ''),
       fn: ()=>{ fbAdjustModal(pl); }
     }))
   });
   pumpModal();
+}
+function fbSumHtml(warn){
+  const my = FB.chosen.cfg.my;
+  const myTot = my.reduce((a,u)=>a+armyTotal(u.army),0);
+  const foeTot = FB.P.foe.reduce((a,u)=>a+armyTotal(u.army),0);
+  return `我軍 <b>${myTot}</b> vs 敵軍 <b>${foeTot}</b>(守方地利 +${ri((fbDefMul(FB.P.terrain)-1)*100)}%)`+
+    (warn ? `　<span style="color:var(--accent)">${warn}</span>` : '');
 }
 function fbSetTroop(i, k, v){
   if(!FB || !FB.chosen) return;
   const my = FB.chosen.cfg.my;
   const others = my.reduce((a,u,j)=> a + (j===i ? 0 : (u.army[k]||0)), 0);
   const avail = Math.max(0, (FB.sentArmy[k]||0) - others);
-  my[i].army[k] = clamp(ri(+v||0), 0, avail);
-  const hudEl = $('modalHud');
-  if(hudEl && FB.adjHud) hudEl.innerHTML = FB.adjHud();
+  const want = ri(+v||0);
+  my[i].army[k] = clamp(want, 0, avail);
+  // 局部更新:不重建表格,輸入焦點與軟鍵盤不再蒸發
+  const inp = $('fbin_'+i+'_'+k);
+  if(inp && want !== my[i].army[k]) inp.value = my[i].army[k];
+  const foeMix = {ashigaru:0,yumi:0,kiba:0,teppo:0};
+  FB.P.foe.forEach(u=>U_KEYS.forEach(k2=>{foeMix[k2]+=u.army[k2]||0;}));
+  my.forEach((u,j)=>{ const el=$('fbpow_'+j); if(el) el.textContent = ri(ksStrength({...u, pos:u.pos}, 'charge', {weather:FB.P.weather, terrain:FB.P.terrain}, foeMix)); });
+  U_KEYS.forEach(k2=>{ const el=$('fbav_'+k2); if(el) el.textContent = '殘' + Math.max(0, (FB.sentArmy[k2]||0) - my.reduce((a,u)=>a+(u.army[k2]||0),0)); });
+  const sum = $('fbsum');
+  if(sum) sum.innerHTML = fbSumHtml(want > my[i].army[k] ? '⚠ ' + ({ashigaru:'足輕',yumi:'弓',kiba:'騎',teppo:'銃'})[k] + '逾額,已調為 ' + my[i].army[k] : '');
 }
 // ── 開戰:先算完,再重播 ──
 let fbGen = 0;
@@ -6272,12 +6303,16 @@ function fbFrame(){
   const myT = fr.units.filter(u=>u.side==='my'&&!u.broke).reduce((a,u)=>a+u.troops,0);
   const foeT = fr.units.filter(u=>u.side==='foe'&&!u.broke).reduce((a,u)=>a+u.troops,0);
   w.innerHTML = `<div class="kssum">第${FB.idx}刻/${FB.result.rounds.length-1}　<b style="color:var(--crimson)">我 ${myT}</b> vs <b style="color:var(--navy)">敵 ${foeT}</b>`+
-    `　<button class="ghost ksbtn" onclick="fbPause()">${FB.paused?'▶':'⏸'}</button>`+
-    `<button class="ghost ksbtn" onclick="fbSpeed()">×${FB.fast?2:1}</button>`+
-    `<button class="ghost ksbtn" onclick="fbSkip()">跳至結果</button></div>`+
+    `　<button class="ghost ksbtn" onclick="fbPause()">${FB.paused?'▶ 續':'⏸ 停'}</button>`+
+    `<button class="ghost ksbtn" onclick="fbSpeed()">${FB.fast?'×1 原速':'×2 加速'}</button></div>`+
     `<div class="dim" style="font-size:11px">敵軍(斜紋)</div>` + row('foe') +
     `<div class="dim" style="font-size:11px">我軍</div>` + row('my') +
     ((FB.saiRound && FB.idx === FB.saiRound && !FB.saiUsed && !FB.saiAsked) ? fbSaiHtml() : '');
+  if(FB.saiRound && FB.idx === FB.saiRound && !FB.saiUsed && !FB.saiAsked){
+    fbChoicesSai();
+    const hudEl = $('modalHud');
+    if(hudEl) hudEl.scrollTop = 99999;   // 采配告示捲入眼簾
+  }
   const lg = $('fbLog');
   if(lg){
     fr.events.forEach(e=>{ const d = document.createElement('div'); d.textContent = e; lg.appendChild(d); });
@@ -6286,10 +6321,30 @@ function fbFrame(){
 }
 function fbSaiHtml(){
   FB.paused = true;
-  return `<div id="fbSai"><b>🥁 采配の時</b>——戰局鬆動,主君可下一令:<br>`+
-    `<button class="ksbtn" onclick="fbSai('toku')">親臨督戰(全軍+8氣)</button> `+
-    (FB.chosen.cfg.my.some(u=>u.pos==='dono') ? `<button class="ksbtn ghost" onclick="fbSai('yobi')">投入後備</button> ` : '')+
-    `<button class="ksbtn ghost" onclick="fbSai('none')">靜觀其變</button></div>`;
+  return `<div id="fbSai"><b>🥁 采配の時</b>——戰局鬆動,請主君於下方擇令。</div>`;
+}
+function fbChoicesSai(){   // 采配三令注入 sticky 行動列(不再埋於捲動區)
+  const c = $('modalChoices'); if(!c) return;
+  c.innerHTML = '';
+  const mk = (lb, sub, od, ghost)=>{
+    const b = document.createElement('button');
+    if(ghost) b.className = 'ghost';
+    b.innerHTML = lb + (sub ? `<br><small>${sub}</small>` : '');
+    b.onclick = ()=>{ fbChoicesRestore(); fbSai(od); };
+    c.appendChild(b);
+  };
+  mk('🥁 親臨督戰', '全軍士氣 +8', 'toku', false);
+  if(FB.chosen.cfg.my.some(u=>u.pos==='dono')) mk('🥁 投入後備', '生力軍突擊', 'yobi', true);
+  mk('🌫 靜觀其變', '不擾陣腳,靜候戰局', 'none', true);
+}
+function fbChoicesRestore(){
+  const c = $('modalChoices'); if(!c) return;
+  c.innerHTML = '';
+  const b = document.createElement('button');
+  b.className = 'ghost';
+  b.innerHTML = '⏭ 跳至結果<br><small>略過觀戰,直取戰果</small>';
+  b.onclick = ()=>{ fbSkip(); };
+  c.appendChild(b);
 }
 function fbSai(ord){
   if(!FB) return;
@@ -6334,16 +6389,24 @@ function fbFinish(){
 }
 function fbDebrief(){
   const r = FB.result, pl = FB.chosen, P = FB.P;
-  const keyEv = r.rounds.flatMap(x=>x.events).filter(e=>/崩潰|伏兵|誘敵|討取|見破|總崩|引き揚げ|督戰|預備/.test(e)).slice(0,6);
+  const keyEv = (r.chron && r.chron.length)
+    ? r.chron.slice(0, 7)
+    : r.rounds.flatMap(x=>x.events).filter(e=>/崩潰|伏兵|誘敵|討取|見破|總崩|引き揚げ|督戰|預備/.test(e)).slice(0,6);
+  // 事後覆按:揭露真值——「智略=情報品質」的回饋迴圈在此閉合
+  const tw = ri(pl.trueWin*10), sw = ri(pl.seenWin*10);
+  const gap = Math.abs(pl.seenWin - pl.trueWin);
+  const hindsight = `事後覆按:此案實勝算約${tw}成(軍師所見${sw}成${gap > 0.15 ? '——霧裡看花' : gap < 0.06 ? '——所見不差' : ''})`;
   let review;
   if(r.win){
     review = `軍師${P.adv ? P.adv.name : ''}拱手:「非某之策,乃主君明斷。」`;
+    if(pl.trueWin < 0.35) review = `軍師${P.adv ? P.adv.name : ''}長揖及地:「此戰之勝,非謀所及——天佑${S.famName}家。」`;
     if(P.adv) P.adv.merit = (P.adv.merit||0) + 8;
   }else{
     const better = P.proposals.find(x=>x.key !== pl.key && x.trueWin > pl.trueWin + 0.15);
-    review = better
-      ? `軍師低聲:「……昨日${better.name}之議,惜未達天聽。」(諫言入年代記)`
-      : `軍師自責:「智者千慮——此敗在某,非戰之罪。」`;
+    if(better){
+      review = `軍師低聲:「……昨日${better.name}之議,惜未達天聽。」`;
+      log(`📜 軍議の選択:採「${pl.name}」而敗——軍師曾獻「${better.name}」,諫言錄於年代記。`);
+    }else review = `軍師自責:「智者千慮——此敗在某,非戰之罪。」`;
     if(P.adv) P.adv.merit = (P.adv.merit||0) + 2;
   }
   queueModal({ front:true,   // 戰後檢討插隊首:縱有事件排隊,先結此戰
@@ -6351,7 +6414,7 @@ function fbDebrief(){
     body:`採「${pl.name}」(軍師所見勝算${fbOddsTxt(pl.seenWin,pl.seenBand)})\n`+
       `地形:${({plain:'平野',mountain:'山道',river:'川原'})[P.terrain]}(守方地利+${ri((fbDefMul(P.terrain)-1)*100)}%)`+
       `${r.kisakuNote ? '・計略:' + r.kisakuNote : ''}${FB.saiUsed ? '・采配:' + (FB.saiUsed==='toku'?'親臨督戰':'投入後備') : ''}\n`+
-      `───── 戰場關鍵 ─────\n${keyEv.join('\n') || '兩軍相持,以力決之。'}\n─────────────\n${review}`,
+      `───── 戰場關鍵 ─────\n${keyEv.join('\n') || '兩軍相持,以力決之。'}\n─────────────\n${hindsight}\n${review}`,
     choices:[{label:'領命', fn:()=>{ const cb = FB.onEnd; const res = FB.result; res.deployed = FB.deployed; FB = null; if(cb) cb(res); }}]
   });
   pumpModal();
@@ -6361,7 +6424,7 @@ function fbDebrief(){
 function fbOddsTxt(p, band){
   const lo = clamp(p-band,0.02,0.98), hi = clamp(p+band,0.02,0.98);
   const b = x => Math.round(x*10);
-  return b(lo) === b(hi) ? `${b(lo)}分` : `${b(lo)}~${b(hi)}分`;
+  return b(lo) === b(hi) ? `${b(lo)}成` : `${b(lo)}~${b(hi)}成`;
 }
 // 守方地利倍率(P2 起由地域決定;戰力側,不進士氣)
 function fbDefMul(terrain){ return terrain==='mountain' ? 1.20 : terrain==='river' ? 1.15 : 1.10; }
@@ -10018,6 +10081,8 @@ const INTRO_TIPS = [
  ['tokusei',  /德政請願/,      '德政:荒年領民乞求免貢——允則得民心失米糧,拒則有一揆之險。'],
  ['gonaisho', /御內書/,        '御內書:京都幕府的文書。獻金買名望,或請幕府調停大名之戰。'],
  ['gungi',    /國戰軍議/,      '軍議:選大將、手動調四兵種數量(可少帶省糧),戰力數字即時可見——兵種與大將專精相合,戰力方能盡出。'],
+ ['gunhyo',   /軍評定——/,      '軍評定:軍師三案各有勝算與損兵,數字是軍師「所見」——智略愈高愈準,庸才會看走眼。選案後可再調兵。'],
+ ['fbsai',    /布陣調整/,      '布陣:表頭「殘」為各兵種餘額,調畢即開戰。開戰後全軍自動進退,士氣轉折時你有唯一一次采配——按鈕在下方行動列。'],
  ['fujin',    /布陣——/,        '布陣:先鋒攻高受損亦高;本陣崩則全軍潰;殿不參戰,可由采配投入。'],
  ['shokaku',  /昇格/,          '昇格:五眾各有成為大名之路,條件湊齊,亂世的門就開了。'],
  ['kakun',    /家訓の儀/,      '家訓:立家之訓得永久加成,違背有罰;換代可重立。'],
@@ -10572,7 +10637,7 @@ function renderRivals(){
       h += `<div class="rivalRow tap" data-rid="${f.id}"><b>${i+1}. ${fname(f)}</b>`+
         `<span class="rsub">${f.gun||''}${nb?'<b style="color:var(--accent)">・鄰境</b>':strike2?'<b style="color:var(--accent2)">・兵鋒可及</b>':'<span class="dim">・遠隔</span>'}`+
         `<br>${f.koku}石・兵${rSol(f)}${f.fort?`・城${f.fort}`:''}・${lordBadge}`+
-        `<br><span style="color:var(--accent2)">📋${planLabel(f)}</span></span>`+
+        `<br><span style="color:var(--accent2)">📋${planLabel(f)}</span>${f.dev&&Object.keys(f.dev).length?' 🏵':''}</span>`+
         `<span class="${f.rel<=-30&&!f.marr?'loyLow':''}">${relLabel(f)}</span></div>`;
     }
   });
@@ -10599,7 +10664,8 @@ ${KIND_LABEL[f.clanKind]||'國人'}眾・家風:${f.persona}【${dip.tag}】—�
     `石高 ${f.koku}　威望 ${f.prestige}\n兵力 ${rSol(f)}　城砦 ${f.fort||0} 級　家財 ${f.money||0} 貫`+
     `\n📋 評定:${planLabel(f)}${f.plan?`(${PLANS[f.plan.type].desc})`:''}`+
     (f.dev && Object.keys(f.dev).length ? `
-🏵 家風特化:${Object.keys(f.dev).map(k=>FDEV_META[k].name+(f.dev[k]>1?'×'+f.dev[k]:'')).join('・')}` : '')+
+🏵 家風特化:
+${Object.keys(f.dev).map(k=>`　${FDEV_META[k].name}${f.dev[k]>1?'×'+f.dev[k]:''}——${FDEV_META[k].desc}`).join('\n')}` : '')+
     (f.men && f.men.length ? `\n👥 家臣:${f.men.map(m=>`${m.fame?'⭐':''}${m.name}(武${m.bu}政${m.nai}智${m.chi})`).join('、')}` : `\n👥 家臣:無——耆老勉強視事`)+
     ((f.on||0) >= 10 ? `
 🎗 恩義:${f.on}——${f.on>=50?'重恩在身,危難時必有回報':f.on>=30?'記著你家的情分':'略欠人情'}` : '')+

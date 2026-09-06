@@ -73,12 +73,15 @@ const out=JSON.parse(ev(`(()=>{
       res.lossActual=lossTotal; res.lossExpected=expected;
       res.deployTotal=armyTotal(dep);
     }finally{ queueModal=_qm; FB=null; }
-    // 4) 佈陣後備可見性:穩健案(無 dono)不顯示投後備鈕
-    FB={chosen:{cfg:{my:fbSplitMy({ashigaru:150,yumi:42,kiba:33,teppo:25},'onken')}},paused:false};
-    res.yobiHiddenOnken = !/fbSai\\('yobi'\\)/.test(fbSaiHtml());
-    FB={chosen:{cfg:{my:fbSplitMy({ashigaru:300,yumi:80,kiba:60,teppo:40},'hoshu')}},paused:false};
-    res.yobiShownHoshu = /fbSai\\('yobi'\\)/.test(fbSaiHtml());
-    FB=null;
+    // 4) 采配行動列後備可見性:穩健案(無 dono)2鈕、保守案(有 dono)3鈕
+    const countSai=(plan,n)=>{
+      FB={chosen:{cfg:{my:fbSplitMy({ashigaru:300,yumi:80,kiba:60,teppo:40},plan)}},paused:false};
+      const c=document.getElementById('modalChoices');
+      c.children=[]; fbChoicesSai();
+      const got=(c.children||[]).length; FB=null; return got===n;
+    };
+    res.yobiHiddenOnken = countSai('onken',2);
+    res.yobiShownHoshu  = countSai('hoshu',3);
     // 5) 再入保護:FB 佔用時 conquestWar 的 go 不再扣糧(以 log 攔截驗證訊息)
     res.reentryOk = true;   // go 是閉包不可直呼;以原始碼斷言替代(見 node 端 grep)
     // 6) devN 遷移:舊檔無 devN,migrate 後=已過里程碑數,且歲末單家增量≤1
