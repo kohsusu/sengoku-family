@@ -91,6 +91,18 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
   .groupTag{font-size:11px;color:var(--ink2);letter-spacing:5px;text-align:center;margin:3px 0 -3px;font-family:var(--serif)}
   .card.ops{background:#fdf1dc;border-color:#d8c49a}
+  #modalHud .fbrow{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
+  #modalHud .fbcard{border:1.5px solid var(--line);border-radius:8px;padding:5px 9px;min-width:96px;background:rgba(246,239,221,.65);font-size:12px;line-height:1.4}
+  #modalHud .fbcard b{font-size:13px}
+  #modalHud .fbcard.foe{border-color:var(--navy)}
+  #modalHud .fbcard.clash{border-color:#c23a28;box-shadow:0 0 7px rgba(190,60,40,.55)}
+  #modalHud .fbcard.broke{opacity:.42;filter:grayscale(.55)}
+  #modalHud .fbmor{height:5px;border-radius:3px;background:rgba(0,0,0,.14);margin-top:3px;overflow:hidden}
+  #modalHud .fbmor i{display:block;height:100%;background:linear-gradient(90deg,#c0862e,#e0b44e)}
+  #modalHud .fbcard.foe .fbmor i{background:repeating-linear-gradient(45deg,#8a3a2e 0 5px,#c06a4a 5px 10px)}
+  #modalHud .fbstamp{color:var(--crimson);font-weight:bold;border:2px solid var(--crimson);border-radius:4px;padding:0 3px;font-size:11px;transform:rotate(-8deg);display:inline-block;margin-left:4px}
+  #modalHud #fbLog{white-space:pre-wrap;font-size:12.5px;line-height:1.65;max-height:150px;overflow-y:auto;border-top:1px dashed var(--line);margin-top:5px;padding-top:4px}
+  #modalHud #fbSai{border:1.5px solid var(--gold);border-radius:8px;background:rgba(176,138,62,.1);padding:6px 9px;margin:5px 0}
   @media (prefers-reduced-motion: reduce){
     *{animation:none!important;transition:none!important}
     #modalBack{backdrop-filter:none}
@@ -509,7 +521,7 @@
 
 <script>
 'use strict';
-const BUILD = 'fb2';
+const BUILD = 'fb3b';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -3128,8 +3140,36 @@ function conquestWar(f){
     if(S.rice < sent){ log('兵糧不足,大軍未能開拔。','bad'); return; }
     S.rice -= sent;
     warCosts(f, sent);
-    // 敵之物見:知我騎馬眾多者,野戰會誘我入山地險隘
-    const lured = mode !== 'siege' && f.intel && (f.intel.n||0) >= 2 && (f.intel.kibaP||0) >= 0.28 && Math.random() < 0.45;
+    // 野戰改走軍評定(軍師三案→自動戰);攻城仍走既有五回合引擎
+    if(mode !== 'siege'){
+      fbCouncilFlow(f, sentArmy, (res)=>{
+        // 兵損回填:出陣者之折損自 S.army 扣除
+        const remain = {ashigaru:0,yumi:0,kiba:0,teppo:0};
+        res.myRemain.forEach(u=>U_KEYS.forEach(k=>{ remain[k] += u.army[k]||0; }));
+        U_KEYS.forEach(k=>{ S.army[k] = Math.max(0, (S.army[k]||0) - Math.max(0, (sentArmy[k]||0) - remain[k])); });
+        S.soldiers = armyTotal(S.army);
+        const foeInit = res.foeRemain.reduce((a,u)=>a+u.army.__init||0,0);
+        const foeLeft = res.foeRemain.reduce((a,u)=>a+armyTotal(u.army),0);
+        const foeLossRatio = clamp(1 - foeLeft / Math.max(1, rSol(f)), 0.1, 0.95);
+        if(res.win){
+          const taisho = S.taishoId ? S.retainers.find(r2=>r2.name===S.taishoId) : S.retainers[0];
+          if(taisho) taisho.merit = (taisho.merit||0) + 18;
+          // 眾家臣討取(fbRun 內 ksTryKillHex 記名)
+          (res.kills||[]).forEach(nm=>{
+            const m2 = (f.men||[]).find(x=>x.name === nm);
+            if(m2){ f.men.splice(f.men.indexOf(m2),1); log(`⚔ 陣中斬將——${fname(f)}的 ${nm} 討死!`,'good'); }
+          });
+          victoryTerms(f, foeLossRatio, '野戰大敗');
+        }else{
+          S.prestige = Math.max(0, S.prestige - 5);
+          S.minshin = clamp(S.minshin - 4, 0, 100);
+          log(`討伐失利……(威望 -5、民心 -4)`,'bad');
+        }
+        save(); render();
+      });
+      return;
+    }
+    const lured = false;
     startBattle({
       title: mode==='siege' ? `攻${f.seat}城` : `${fname(f)}攻略——野戰`,
       intro: mode==='siege' ? `${fname(f)}閉門不出,只得力攻其城。`
@@ -5855,37 +5895,388 @@ function fbRun(cfg){
     const my = fbClone(cfg.my), foe = fbClone(cfg.foe);
     [...my, ...foe].forEach(u=>{ u.init = armyTotal(u.army); u.broke = false;
       if(!u.mor) u.mor = clamp(60 + (u.gen && u.gen.bu || 55) * 0.28, 25, 130); });
-    // 守方地利:敵軍(守方)全備兵力等效加成以士氣外之戰力呈現——直接放大兵額再於快照還原顯示
     KS = { fieldMode:true, attacking:true, target: cfg.target || 'field', dispName: cfg.dispName || '敵勢',
            my, foe, round:0, hist:[], full:[], sai:'', rout:null,
            ctx: cfg.ctx || {weather: pickWeather(), terrain:'plain', fort:0}, castle:null,
-           fieldDefBonus: cfg.defBonus || 0, fieldKisaku: cfg.kisaku || null };
+           fieldDefBonus: cfg.defBonus || 0 };
     BT = null;
     ksHexInit();
-    const snap = ()=> KS.hex.units.map(u=>({ side:u.side, nm:u.s.name, snm:u.s.snm || (u.s.gen && u.s.gen.name || '').slice(0,2),
-      troops:ksTotal(u.s), mor:ri(u.s.mor), broke:!!u.s.broke,
-      clash: !!(KS.hex.clash||[]).find(f2=>(f2.ac===u.c&&f2.ar===u.r)||(f2.bc===u.c&&f2.br===u.r)) }));
-    const rounds = [{units:snap(), events:['兩軍對峙於' + ({plain:'平野',mountain:'山道',river:'川原'}[KS.ctx.terrain]||'野') + ',殺氣漸凝。']}];
-    let guard = 0, histAt = 0;
+    const H = KS.hex;
+    // 軍令計畫:各陣位初始軍令(整場沿用;采配可改)
+    const ordMap = cfg.ordMap || {hon:'adv', sen:'adv', left:'adv', right:'adv', dono:'hold'};
+    H.units.forEach(u=>{ if(u.side==='my') u.ord = ordMap[u.s.pos] || 'adv'; });
+    // 伏兵:抽最弱一備藏於北緣,round 3 現身
+    let hidden = null;
+    if(cfg.kisaku && cfg.kisaku.type === 'fusehi'){
+      const cands = H.units.filter(u=>u.side==='my' && u.s.pos!=='hon');
+      if(cands.length){
+        hidden = cands.reduce((a,b)=> ksTotal(a.s) <= ksTotal(b.s) ? a : b);
+        hidden.c = 7; hidden.r = 0; hidden.ord = 'hold'; hidden._hidden = true;
+      }
+    }
+    const snap = ()=> H.units.map(u=>({ side:u.side, nm:u.s.name, snm:u.s.snm || (u.s.gen && u.s.gen.name || '').slice(0,2),
+      troops:ksTotal(u.s), mor:ri(u.s.mor), broke:!!u.s.broke, hidden:!!u._hidden,
+      clash: !!(H.clash||[]).find(f2=>(f2.ac===u.c&&f2.ar===u.r)||(f2.bc===u.c&&f2.br===u.r)) }));
+    const rounds = [{units:snap(), events:['兩軍對峙於' + ({plain:'平野',mountain:'山道',river:'川原'}[KS.ctx.terrain]||'野') + ',殺氣漸凝。' + (cfg.kisaku ? '(密計已伏)' : '')]}];
+    let guard = 0, histAt = 0, kisakuNote = null;
     while(!KS.hexDone && guard++ < 14){
+      const rNow = (H.round || 0) + 1;
+      // 計略腳本(round 3 判定)
+      if(cfg.kisaku && !cfg.kisaku._done && rNow === 3){
+        cfg.kisaku._done = true;
+        const okRoll = Math.random() < cfg.kisaku.p;
+        if(cfg.kisaku.type === 'fusehi' && hidden){
+          if(okRoll){
+            const fh = H.units.find(u=>u.side==='foe' && u.s.pos==='hon' && !u.s.broke) || H.units.find(u=>u.side==='foe' && !u.s.broke);
+            if(fh){ hidden.c = Math.min(13, fh.c + 1); hidden.r = clamp(fh.r + 1, 0, 14); }
+            hidden._hidden = false; hidden.ord = 'chg';
+            hidden.s.mor = clamp(hidden.s.mor + 15, 0, 140);
+            KS.foe.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor - 15, 0, 140); });
+            KS.hist.push('⚡【伏兵!】' + hidden.s.name + '自林間殺出,直撲敵背——敵全軍大駭(敵士氣 -15)!');
+            kisakuNote = '伏兵得逞';
+          }else{
+            hidden._hidden = false; hidden.c = 4; hidden.r = 2; hidden.ord = 'adv';
+            KS.my.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor - 12, 0, 140); });
+            KS.hist.push('▼【見破られ】伏兵為敵物見所察,倉皇現身——我軍士氣動搖(-12)。');
+            kisakuNote = '伏兵識破';
+          }
+        }else if(cfg.kisaku.type === 'yuteki'){
+          if(okRoll){
+            KS.foe.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor - 10, 0, 140); });
+            KS.my.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor + 8, 0, 140); });
+            H.units.forEach(u=>{ if(u.side==='my') u.ord = 'chg'; });
+            KS.hist.push('⚡【誘敵成】敵軍追擊過深,陣形已亂——全軍反擊(我+8氣/敵-10氣)!');
+            kisakuNote = '誘敵得逞';
+          }else{
+            KS.my.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor - 12, 0, 140); });
+            KS.hist.push('▼【見破られ】敵軍按兵不追,誘敵成空——我軍白退一程,士氣受挫(-12)。');
+            kisakuNote = '誘敵識破';
+          }
+        }
+      }
+      // 采配腳本(重演時由 cfg 指定)
+      if(cfg.saiOrd && rNow === cfg.saiRound){
+        if(cfg.saiOrd === 'toku'){
+          KS.my.forEach(o=>{ if(!o.broke) o.mor = clamp(o.mor + 8, 0, 140); });
+          KS.hist.push('🥁 主君親至陣前督戰——全軍士氣復振(+8)!');
+        }else if(cfg.saiOrd === 'yobi'){
+          const d = H.units.find(u=>u.side==='my' && u.s.pos==='dono' && !u.s.broke);
+          if(d){ d.ord = 'chg'; d.s.mor = clamp(d.s.mor + 10, 0, 140);
+            KS.hist.push('🥁 預備隊投入戰線——生力軍抵至(' + d.s.name + '突擊)!'); }
+          else KS.hist.push('🥁 欲投預備,然無備可投——徒呼負負。');
+        }
+      }
       ksHexResolve();
       if(!KS || !KS.hex) break;
       const ev2 = (KS.hist || []).slice(histAt);
       histAt = (KS.hist || []).length;
       rounds.push({units:snap(), events:ev2});
     }
-    const result = {
+    return {
       win: !!KS.fieldWin,
-      rounds,
+      rounds, kisakuNote,
       kills: (KS.killed || []).slice(),
       nRounds: KS.hex ? KS.hex.round : rounds.length - 1,
       myRemain: KS.my.map(u=>({nm:u.name, army:fbClone(u.army), mor:ri(u.mor), broke:!!u.broke, fought:!!u._fought})),
       foeRemain: KS.foe.map(u=>({nm:u.name, army:fbClone(u.army), mor:ri(u.mor), broke:!!u.broke}))
     };
-    return result;
   }finally{
     KS = savedKS; BT = savedBT;
   }
+}
+// ── 軍師與三案生成 ──
+function fbGunshi(){
+  const pool = activeR().filter(r=>(r.sick||0)===0);
+  if(!pool.length) return null;
+  return pool.reduce((a,b)=> (a.chi||0) >= (b.chi||0) ? a : b);
+}
+// 我軍分備:依案切割 S 兵力為 2~3 備
+function fbSplitMy(sentArmy, plan){
+  armySync(); aptSync();
+  const lord = ensureApt(S.retainers[0]);
+  const others = activeR().slice(1).filter(r=>(r.sick||0)===0).sort((a,b)=>b.bu-a.bu).map(ensureApt);
+  const g1 = others[0] || lord, g2 = others[1] || null;
+  const total = armyTotal(sentArmy);
+  const shares = plan === 'rikko'  ? [['hon',0.30,lord],['sen',0.70,g1]]
+               : plan === 'hoshu'  ? (g2 ? [['hon',0.40,lord],['sen',0.35,g1],['dono',0.25,g2]] : [['hon',0.50,lord],['sen',0.50,g1]])
+               : (g2 && total >= 180 ? [['hon',0.34,lord],['sen',0.40,g1],['left',0.26,g2]] : [['hon',0.42,lord],['sen',0.58,g1]]);
+  const sonae = [];
+  let acc = {ashigaru:0,yumi:0,kiba:0,teppo:0};
+  shares.forEach(([pos,sh,gen],i)=>{
+    const a = {};
+    U_KEYS.forEach(k=>{
+      a[k] = (i === shares.length-1) ? Math.max(0,(sentArmy[k]||0)-acc[k]) : ri((sentArmy[k]||0)*sh);
+      acc[k] += a[k];
+    });
+    sonae.push({id:'fm'+i, name: pos==='hon'?'本陣':pos==='sen'?'先手':pos==='dono'?'後備':'脇備',
+      snm: gen.name.slice(0,2), gen, kind:'family', army:a, pos, mor:0, init:0, broke:false});
+  });
+  return sonae;
+}
+// 敵軍分備(眾)
+function fbFoeSonae(f){
+  const sol = rSol(f);
+  const base = foeArmyOf(f), bt = armyTotal(base)||1;
+  const mk = (nm,pos,sh,g)=>{
+    const a={}; U_KEYS.forEach(k=>{ a[k]=ri(sol*sh*(base[k]||0)/bt); });
+    return {id:'ff'+pos, name:nm, snm:fname(f).slice(0,2), gen:g, kind:'foe', vname:g.name, army:a, pos, mor:0, init:0, broke:false};
+  };
+  const best = (f.men||[]).slice().sort((a,b)=>(b.bu||0)-(a.bu||0))[0];
+  const gHon = ensureApt({name:fname(f)+'當主', bu:52+ri((f.prestige||0)*0.2), nai:50, chi:48+ri((f.prestige||0)*0.15), trait:null});
+  const gSen = best ? ensureApt({name:best.name, bu:best.bu, nai:best.nai, chi:best.chi, trait:null})
+                    : ensureApt({name:fname(f)+'先手大將', bu:56, nai:40, chi:45, trait:null});
+  return [mk('敵本陣','hon',0.45,gHon), mk('敵先手','sen',0.55,gSen)];
+}
+// 三案+奇策生成:rollout 12場/案取真值,軍師智略決定「看見的」數字
+function fbPropose(f, sentArmy){
+  const adv = fbGunshi();
+  const chi = adv ? adv.chi : ri((S.retainers[0].chi||50) * 0.7);
+  const terrain = terraDraw(f);
+  const weather = pickWeather();
+  const foe = fbFoeSonae(f);
+  const foeChi = Math.max(...foe.map(u=>u.gen.chi||45));
+  const defBonus = fbDefMul(terrain) - 1;
+  const PLANS = [
+    {key:'onken', name:'穩健の陣', icon:'🛡', ordMap:{hon:'adv',sen:'adv',left:'adv',dono:'hold'}, plan:'onken'},
+    (S.taishoId || (activeR()[1]&&activeR()[1].bu>=75))
+      ? {key:'rikko', name:'力攻の陣', icon:'⚔', ordMap:{hon:'adv',sen:'chg',left:'chg',dono:'hold'}, plan:'rikko'}
+      : {key:'chiri', name:'地利の陣', icon:'⛰', ordMap:{hon:'hold',sen:'feat',left:'adv',dono:'hold'}, plan:'onken'},
+    {key:'hoshu', name:'保守の陣', icon:'🐚', ordMap:{hon:'hold',sen:'hold',left:'hold',dono:'hold'}, plan:'hoshu'}
+  ];
+  // 奇策:智略≥85 才浮現
+  let kisaku = null;
+  if(chi >= 85){
+    const type = terrain === 'river' ? 'yuteki' : 'fusehi';
+    const p = clamp(0.35 + (chi - foeChi)/150, 0.1, 0.85);
+    kisaku = {key:'kisaku', name: type==='fusehi' ? '奇策・伏兵' : '奇策・誘敵', icon:'🌙',
+      ordMap:{hon:'adv',sen:'adv',left:'adv',dono:'hold'}, plan:'onken', kisaku:{type, p}};
+    PLANS.push(kisaku);
+  }
+  const noise = (1 - clamp(chi,20,100)/100) * 18;
+  const out = PLANS.map(pl=>{
+    const my = fbSplitMy(sentArmy, pl.plan);
+    const cfg = {my, foe, ctx:{weather, terrain, fort:0}, defBonus, ordMap:pl.ordMap,
+                 kisaku: pl.kisaku ? fbClone(pl.kisaku) : null, target:f.id, dispName:fname(f)};
+    let w=0, lossSum=0, brokeN=0;
+    const NR = 12;
+    for(let i=0;i<NR;i++){
+      const r = fbRun(fbClone(cfg));
+      if(r.win) w++;
+      const lost = my.reduce((a,u)=>a+armyTotal(u.army),0) - r.myRemain.reduce((a,u)=>a+armyTotal(u.army),0);
+      lossSum += lost;
+      if(r.myRemain.some(u=>u.broke)) brokeN++;
+    }
+    const trueWin = w/NR;
+    const seen = clamp(trueWin + (Math.random()*2-1)*noise/100, 0.03, 0.97);
+    return { ...pl, cfg, trueWin,
+      seenWin: seen, seenBand: Math.max(0.06, noise/100),
+      avgLoss: ri(lossSum/NR), brokeP: brokeN/NR };
+  });
+  return { adv, chi, terrain, weather, foe, proposals: out };
+}
+// 軍師語錄:同案異口——智略決定說法的深度,特性染色措辭
+function fbSay(planKey, chi, trait){
+  const t = chi >= 75 ? 2 : chi >= 50 ? 1 : 0;
+  const L = {
+    onken: ['擺開了打便是,別想太多!','正面推過去,穩紮穩打,錯不了。','堂堂之陣。彼軍鋒銳在先手,我以厚勢磨之,自潰。'],
+    chiri: ['那邊有塊高地,搶了總沒錯?','先手搶佔形勝之地,居高臨下,事半功倍。','此地渡口(高地)乃咽喉——先據之,敵仰攻必耗,耗則氣沮,氣沮則潰。'],
+    rikko: ['衝!一鼓作氣踏平他!','以先手銳卒直擊其陣,勝負在一炷香之內。','敵陣立足未穩,雷霆一擊正當其時——遲則變生。'],
+    hoshu: ['守著唄,他能奈我何?','結陣自守,耗其銳氣,不求勝但求不敗。','善守者藏於九地之下。彼師老無功,自退之日,便是我追擊之時。'],
+    kisaku: ['嘿嘿,俺有個損招……','某有一計,或可出奇制勝——然有風險。','(以枝畫地)主君,且慢。此計若售,一戰而定;若不售——某以首級謝之。']
+  }[planKey] || ['但憑主君決斷。','但憑主君決斷。','但憑主君決斷。'];
+  let txt = L[t];
+  if(trait === 'gouyuu' && planKey === 'rikko') txt += '(摩拳擦掌)';
+  if(trait === 'byoujaku' && planKey === 'hoshu') txt += '(輕咳)……萬不可浪戰。';
+  return txt;
+}
+// ── 軍評定流程:conquestWar 野戰入口 ──
+let FB = null;
+function fbCouncilFlow(f, sentArmy, onEnd){
+  const P = fbPropose(f, sentArmy);
+  FB = { f, P, sentArmy, onEnd, saiUsed:null };
+  const advTxt = P.adv ? `${P.adv.name}(智略${P.chi})` : `${S.retainers[0].name}自任軍配(智略折衝)`;
+  const terraTxt = {plain:'平野',mountain:'山道險隘',river:'川原'}[P.terrain] || P.terrain;
+  queueModal({
+    title:`⚔ 軍評定——${fname(f)}攻略`,
+    body:`軍師 ${advTxt} 於帳中鋪開絵圖:\n「彼處${terraTxt},天候${({sunny:'晴',rain:'雨',fog:'霧',wind:'風'})[P.weather]||P.weather}。守方得地利。諸案在此,請主君決斷。」\n\n(勝算與損兵為軍師之見——智略愈高,所見愈真)`,
+    choices: P.proposals.map(pl=>({
+      label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵約${pl.avgLoss}`,
+      sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait),
+      fn: ()=>{ fbAdjustModal(pl); }
+    }))
+  });
+  pumpModal();
+}
+function fbAdjustModal(pl){
+  FB.chosen = pl;
+  const hud = ()=>{
+    const foeMix = {ashigaru:0,yumi:0,kiba:0,teppo:0};
+    FB.P.foe.forEach(u=>U_KEYS.forEach(k=>{foeMix[k]+=u.army[k]||0;}));
+    const UN = {ashigaru:'足輕',yumi:'弓',kiba:'騎',teppo:'銃'};
+    let h = `<table class="kstbl"><tr><th>備</th><th>大將</th>${U_KEYS.map(k=>`<th>${UN[k]}</th>`).join('')}<th>戰力</th></tr>`;
+    pl.cfg.my.forEach((u,i)=>{
+      const pow = ri(ksStrength({...u, pos:u.pos}, 'charge', {weather:FB.P.weather, terrain:FB.P.terrain}, foeMix));
+      h += `<tr><td><b>${u.name}</b></td><td>${u.gen.name}<br><span class="dim" style="font-size:11px">武${u.gen.bu}・${aptLabel(u.gen)||'—'}</span></td>`+
+        U_KEYS.map(k=>`<td><input class="kstin" type="number" min="0" value="${u.army[k]||0}" onchange="fbSetTroop(${i},'${k}',this.value)"></td>`).join('')+
+        `<td class="kspow">${pow}</td></tr>`;
+    });
+    const myTot = pl.cfg.my.reduce((a,u)=>a+armyTotal(u.army),0);
+    const foeTot = FB.P.foe.reduce((a,u)=>a+armyTotal(u.army),0);
+    return h + `</table><div class="kssum">我軍 <b>${myTot}</b> vs 敵軍 <b>${foeTot}</b>(守方地利 +${ri((fbDefMul(FB.P.terrain)-1)*100)}%)</div>`;
+  };
+  FB.adjHud = hud;
+  queueModal({
+    title:`⚔ ${pl.name}——布陣調整`,
+    hud: hud(),
+    body:`可調各備兵種員額(總和不逾出陣之兵)。調畢即開戰——開戰後全軍自動進退,唯士氣轉折時可下一次采配。`,
+    choices:[
+      {label:'開戰!', fn:()=>{ fbBattleStart(); }},
+      {label:'改案——回軍評定', fn:()=>{ fbCouncilReopen(); }}
+    ]
+  });
+  pumpModal();
+}
+function fbCouncilReopen(){
+  const P = FB.P;
+  queueModal({
+    title:`⚔ 軍評定——${fname(FB.f)}攻略`,
+    body:`軍師再展絵圖,靜候決斷。`,
+    choices: P.proposals.map(pl=>({
+      label:`${pl.icon} ${pl.name}　勝算${fbOddsTxt(pl.seenWin, pl.seenBand)}・損兵約${pl.avgLoss}`,
+      sub: fbSay(pl.key, P.chi, P.adv && P.adv.trait),
+      fn: ()=>{ fbAdjustModal(pl); }
+    }))
+  });
+  pumpModal();
+}
+function fbSetTroop(i, k, v){
+  if(!FB || !FB.chosen) return;
+  const my = FB.chosen.cfg.my;
+  const others = my.reduce((a,u,j)=> a + (j===i ? 0 : (u.army[k]||0)), 0);
+  const avail = Math.max(0, (FB.sentArmy[k]||0) - others);
+  my[i].army[k] = clamp(ri(+v||0), 0, avail);
+  const hudEl = $('modalHud');
+  if(hudEl && FB.adjHud) hudEl.innerHTML = FB.adjHud();
+}
+// ── 開戰:先算完,再重播 ──
+function fbBattleStart(){
+  const pl = FB.chosen;
+  const r = fbRun(fbClone(pl.cfg));
+  FB.result = r; FB.idx = 0; FB.fast = false; FB.paused = false; FB.done = false;
+  // 采配時點:計略刻(3)或首次我軍士氣總降幅≥12 的刻
+  let sai = 0;
+  for(let i=2; i<r.rounds.length; i++){
+    const m0 = r.rounds[i-1].units.filter(u=>u.side==='my').reduce((a,u)=>a+u.mor,0);
+    const m1 = r.rounds[i].units.filter(u=>u.side==='my').reduce((a,u)=>a+u.mor,0);
+    if(pl.cfg.kisaku && i===3){ sai = i; break; }
+    if(m0 - m1 >= 12){ sai = i; break; }
+  }
+  FB.saiRound = sai;
+  queueModal({ title:`⚔ ${fname(FB.f)}攻略——${pl.name}`, hud:`<div id="fbWrap"></div><div id="fbLog"></div>`, body:'',
+    choices:[{label:'⏭ 跳至結果', sub:'略過觀戰,直取戰果', fn:()=>{ if(FB && FB.result){ FB.idx = FB.result.rounds.length - 1; FB.paused = true; fbFinish(); } }}] });
+  pumpModal();
+  fbFrame();
+  fbTick();
+}
+function fbFrame(){
+  const w = $('fbWrap');
+  if(!w || !FB || !FB.result) return;
+  const fr = FB.result.rounds[FB.idx];
+  const row = side => `<div class="fbrow">` + fr.units.filter(u=>u.side===side).map(u=>{
+    const w2 = clamp(u.mor/130, 0, 1);
+    return `<div class="fbcard ${side==='foe'?'foe':''} ${u.clash?'clash':''} ${u.broke?'broke':''}">`+
+      `<b>${u.snm||u.nm.slice(0,2)}</b> ${u.hidden?'<span class="fbstamp">伏</span>':''}${u.broke?'<span class="fbstamp">潰</span>':''}${u.clash&&!u.broke?' ⚔':''}`+
+      `<br>${u.troops}兵・氣${u.mor}<div class="fbmor"><i style="width:${ri(w2*100)}%"></i></div></div>`;
+  }).join('') + `</div>`;
+  const myT = fr.units.filter(u=>u.side==='my'&&!u.broke).reduce((a,u)=>a+u.troops,0);
+  const foeT = fr.units.filter(u=>u.side==='foe'&&!u.broke).reduce((a,u)=>a+u.troops,0);
+  w.innerHTML = `<div class="kssum">第${FB.idx}刻/${FB.result.rounds.length-1}　<b style="color:var(--crimson)">我 ${myT}</b> vs <b style="color:var(--navy)">敵 ${foeT}</b>`+
+    `　<button class="ghost ksbtn" onclick="fbPause()">${FB.paused?'▶':'⏸'}</button>`+
+    `<button class="ghost ksbtn" onclick="fbSpeed()">×${FB.fast?2:1}</button>`+
+    `<button class="ghost ksbtn" onclick="fbSkip()">跳至結果</button></div>`+
+    `<div class="dim" style="font-size:11px">敵軍(斜紋)</div>` + row('foe') +
+    `<div class="dim" style="font-size:11px">我軍</div>` + row('my') +
+    ((FB.saiRound && FB.idx === FB.saiRound && !FB.saiUsed && !FB.saiAsked) ? fbSaiHtml() : '');
+  const lg = $('fbLog');
+  if(lg){
+    fr.events.forEach(e=>{ const d = document.createElement('div'); d.textContent = e; lg.appendChild(d); });
+    lg.scrollTop = lg.scrollHeight;
+  }
+}
+function fbSaiHtml(){
+  FB.paused = true;
+  return `<div id="fbSai"><b>🥁 采配の時</b>——戰局鬆動,主君可下一令:<br>`+
+    `<button class="ksbtn" onclick="fbSai('toku')">親臨督戰(全軍+8氣)</button> `+
+    `<button class="ksbtn ghost" onclick="fbSai('yobi')">投入後備</button> `+
+    `<button class="ksbtn ghost" onclick="fbSai('none')">靜觀其變</button></div>`;
+}
+function fbSai(ord){
+  if(!FB) return;
+  FB.saiAsked = true; FB.paused = false;
+  if(ord !== 'none'){
+    FB.saiUsed = ord;
+    const cfg2 = fbClone(FB.chosen.cfg);
+    cfg2.saiOrd = ord; cfg2.saiRound = FB.saiRound;
+    const r2 = fbRun(cfg2);
+    // 拼接:已看過的前段保留,采配之後採新演算
+    FB.result = { ...r2, rounds: FB.result.rounds.slice(0, FB.saiRound).concat(r2.rounds.slice(FB.saiRound)) };
+    if(FB.idx >= FB.result.rounds.length) FB.idx = FB.result.rounds.length - 1;
+  }
+  fbFrame();
+  fbTick();
+}
+function fbPause(){ if(!FB) return; FB.paused = !FB.paused; if(!FB.paused) fbTick(); else fbFrame(); }
+function fbSpeed(){ if(!FB) return; FB.fast = !FB.fast; fbFrame(); }
+function fbSkip(){ if(!FB || !FB.result) return; FB.idx = FB.result.rounds.length - 1; FB.paused = true; fbFrame(); fbFinish(); }
+function fbTick(){
+  if(!FB || FB.done || FB.paused) return;
+  if(FB.idx >= FB.result.rounds.length - 1){ fbFinish(); return; }
+  const fr = FB.result.rounds[FB.idx];
+  const delay = (fr.units.some(u=>u.clash) ? 1900 : 1250) / (FB.fast ? 2 : 1);
+  setTimeout(()=>{
+    if(!FB || FB.done || FB.paused) return;
+    FB.idx += 1;
+    fbFrame();
+    if(FB.saiRound && FB.idx === FB.saiRound && !FB.saiUsed && !FB.saiAsked) return;   // 停等采配
+    fbTick();
+  }, delay);
+}
+function fbFinish(){
+  if(!FB || FB.done) return;
+  FB.done = true;
+  $('modalBack').classList.add('hidden');
+  fbDebrief();
+}
+function fbDebrief(){
+  const r = FB.result, pl = FB.chosen, P = FB.P;
+  const keyEv = r.rounds.flatMap(x=>x.events).filter(e=>/崩潰|伏兵|誘敵|討取|見破|總崩|引き揚げ|督戰|預備/.test(e)).slice(0,6);
+  let review;
+  if(r.win){
+    review = `軍師${P.adv ? P.adv.name : ''}拱手:「非某之策,乃主君明斷。」`;
+    if(P.adv) P.adv.merit = (P.adv.merit||0) + 8;
+  }else{
+    const better = P.proposals.find(x=>x.key !== pl.key && x.trueWin > pl.trueWin + 0.15);
+    review = better
+      ? `軍師低聲:「……昨日${better.name}之議,惜未達天聽。」(諫言入年代記)`
+      : `軍師自責:「智者千慮——此敗在某,非戰之罪。」`;
+    if(P.adv) P.adv.merit = (P.adv.merit||0) + 2;
+  }
+  queueModal({
+    title:`【${r.win?'勝':'敗'}】${fname(FB.f)}攻略——軍議の選択`,
+    body:`採「${pl.name}」(軍師所見勝算${fbOddsTxt(pl.seenWin,pl.seenBand)})\n`+
+      `地形:${({plain:'平野',mountain:'山道',river:'川原'})[P.terrain]}(守方地利+${ri((fbDefMul(P.terrain)-1)*100)}%)`+
+      `${r.kisakuNote ? '・計略:' + r.kisakuNote : ''}${FB.saiUsed ? '・采配:' + (FB.saiUsed==='toku'?'親臨督戰':'投入後備') : ''}\n`+
+      `───── 戰場關鍵 ─────\n${keyEv.join('\n') || '兩軍相持,以力決之。'}\n─────────────\n${review}`,
+    choices:[{label:'領命', fn:()=>{ const cb = FB.onEnd; const res = FB.result; FB = null; if(cb) cb(res); }}]
+  });
+  pumpModal();
+}
+// 勝算的說法(智略決定精度)
+// 勝算的說法(智略決定精度)
+function fbOddsTxt(p, band){
+  const lo = clamp(p-band,0.02,0.98), hi = clamp(p+band,0.02,0.98);
+  const b = x => Math.round(x*10);
+  return b(lo) === b(hi) ? `${b(lo)}分` : `${b(lo)}~${b(hi)}分`;
 }
 // 守方地利倍率(P2 起由地域決定;戰力側,不進士氣)
 function fbDefMul(terrain){ return terrain==='mountain' ? 1.20 : terrain==='river' ? 1.15 : 1.10; }
