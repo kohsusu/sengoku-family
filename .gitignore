@@ -81,3 +81,5 @@ _sim/_check.js
 firebase.json
 發佈.bat
 public/
+發佈.bat*
+*.bat.bak

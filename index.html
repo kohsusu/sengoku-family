@@ -530,7 +530,7 @@
 
 <script>
 'use strict';
-const BUILD = 'au1';
+const BUILD = 'jt1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -10694,9 +10694,70 @@ function openRetainer(i){
       }});
     }
   }
+  // 暇を出す(辭退):非一門限定——徹底止血,但可能結怨
+  if(!isLord && r.kind !== '一門' && !S.gameOver){
+    choices.push({label:'暇を出す(辭退)', sub:'⚠ 逐出家門:止支知行、騰出席次;高功者恐轉仕鄰家結怨', fn:()=>{ jitaiConfirm(i); }});
+  }
   choices.push({label:'關閉', fn:()=>{}});
   queueModal({title:`${r.name}`, body, choices, face:r});
   pumpModal();
+}
+// ── 辭退確認與結算 ──
+function jitaiConfirm(i){
+  const r = S.retainers[i];
+  if(!r) return;
+  const highMerit = (r.merit||0) >= 80;
+  const loyal = r.trait === 'chuugi';
+  queueModal({title:`暇を出す——${r.name}`,
+    body:`${r.role}・${r.age}歲・功勳 ${r.merit||0}・知行 ${r.salary||0} 石/年
+
+`+
+      `辭退則:
+・年俸就此止支、席次騰出
+・家中人心動搖(全員忠誠 -3)、威望 -1
+`+
+      (loyal ? `・其人忠義,當黯然歸田,不致為患
+` :
+       highMerit ? `・⚠ 其人功勳卓著——被逐之恨,恐使其轉仕鄰家,反噬我門
+` :
+       `・或有轉仕他家之虞
+`)+
+      `
+「${loyal ? '……主命難違。此生不事二主,某歸田去也。' : highMerit ? '某為家門效死多年——今日之辱,沒齒難忘!' : '……罷了,天下之大,豈無容身之處。'}」`,
+    choices:[
+      {label:'辭退', sub:'心意已決', fn:()=>{ jitaiExec(i); }},
+      {label:'再想想', fn:()=>{}}
+    ]});
+  pumpModal();
+}
+function jitaiExec(i){
+  const r = S.retainers[i];
+  if(!r || i === 0 || r.kind === '一門') return;
+  if(S.taishoId === r.name) S.taishoId = null;
+  S.retainers.splice(i, 1);
+  S.retainers.forEach(x=>{ if(x.role !== '當主') x.loyalty = clamp((x.loyalty||70) - 3, 0, 100); });
+  S.prestige = Math.max(0, S.prestige - 1);
+  const highMerit = (r.merit||0) >= 80;
+  const loyal = r.trait === 'chuugi';
+  if(loyal){
+    log(`${r.name} 拜辭而去,歸田終老——忠義之人,至此不怨(全員忠誠 -3、威望 -1)。`);
+  }else{
+    // 轉仕:高功者六成、常人二成五——投入鄰家眾麾下,並記下這筆怨
+    const p2 = highMerit ? 0.6 : 0.25;
+    const cands = S.rivals.filter(f=>f.alive && f.lord !== 'player' && pdist(f) <= NEIGHBOR_R && (f.men||[]).length < manCap(f));
+    if(cands.length && Math.random() < p2){
+      const f = pick1(cands);
+      const m = {name:r.name, age:r.age, bu:r.bu, nai:r.nai, chi:r.chi};
+      ensureApt(m);
+      f.men = f.men || []; f.men.push(m);
+      addGrudge(f, 'player', highMerit ? 15 : 6);
+      f.rel = clamp((f.rel||0) - (highMerit ? 8 : 3), -100, 100);
+      log(`💨 ${r.name} 銜恨而去,轉仕${fname(f)}!舊臣事仇,鄰里側目(${fname(f)}結怨、全員忠誠 -3、威望 -1)。`,'bad');
+    }else{
+      log(`${r.name} 收拾行囊,黯然離去(全員忠誠 -3、威望 -1)。`);
+    }
+  }
+  save(); render();
 }
 
 // ---------- 招攬流民(主動增加人口) ----------
