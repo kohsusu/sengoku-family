@@ -509,7 +509,7 @@
 
 <script>
 'use strict';
-const BUILD = 'fb1';
+const BUILD = 'fb2';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -3138,7 +3138,7 @@ function conquestWar(f){
       isSiege: mode==='siege',
       sent: sentArmy,
       rivalId: f.id, intel: f.intel,
-      terrain: mode==='siege' ? 'plain' : lured ? 'mountain' : (Math.random()<0.3 ? 'mountain' : Math.random()<0.5 ? 'river' : 'plain'),
+      terrain: mode==='siege' ? 'plain' : lured ? 'mountain' : terraDraw(f),   // 守方地域決定戰場(山國多山道/川筋多川原)
       foe: {name:fname(f), army: foeArmyOf(f), morale: 70 + f.prestige*0.3, fort: mode==='siege' ? fortLv : 0,
             general: rivalGeneral(f), special: foeSpecialOf(f)},
       onEnd:(res)=>{
@@ -3158,6 +3158,7 @@ function conquestWar(f){
   };
   queueModal({
     title:`出兵討伐——${fname(f)}`,
+    /* 地形預告於body另補 */
     body:`興兵伐${fname(f)}(${f.seat}・${f.koku}石・居城 ${fortLv} 級)。\n\n`+
       `出陣 ${sent}(${armyLabel(sentArmy)})${supp?`,含從屬與力 ${ri(supp)}`:''}\n兵糧 ${sent} 石\n\n`+
       `⚠ 無故興兵:國人眾側目${f.lord && f.lord!=='player' ? `、其主家${LORD_META[f.lord].name}家震怒` : ''}`,
@@ -5822,6 +5823,28 @@ function hxUnitAt(c, r){
 // ══════════ 軍評定・野戰核心(P1):無頭全自動,回傳逐刻快照供重播 ══════════
 // cfg = { my:[sonae...], foe:[sonae...], ctx:{weather,terrain,fort}, defBonus:0~0.25, kisaku:null|{...P3} }
 // 回傳 { win, rounds:[{units:[{side,nm,snm,troops,mor,broke,clash}],events:[]}], kills:[], myRemain, foeRemain, nRounds }
+// 地域地形組:守方所在推導(規則制,不入存檔)——山國/川筋/海濱/平野
+function terraGroupOf(f){
+  if(!f) return '平野';
+  if((typeof CLAN_PROV !== 'undefined' && CLAN_PROV[f.id]) === 'shinano') return '山國';
+  if(f.clanKind === 'suigun') return '海濱';
+  const st = (f.seat || '') + (f.gun || '');
+  if(/湊|津|浜|濱|島|海|知多|渥美/.test(st)) return '海濱';
+  if(/川|瀬|橋|河/.test(st)) return '川筋';
+  if(/山|嶺|峯|峠|谷|作手|田峯/.test(st)) return '山國';
+  return '平野';
+}
+function terraDraw(f){   // 交戰地形依守方地域加權抽取
+  const W = {
+    '山國': [['mountain',0.60],['plain',0.25],['river',0.15]],
+    '川筋': [['river',0.55],['plain',0.35],['mountain',0.10]],
+    '海濱': [['plain',0.60],['river',0.40]],
+    '平野': [['plain',0.70],['river',0.15],['mountain',0.15]]
+  }[terraGroupOf(f)];
+  let r = Math.random();
+  for(const [t,w] of W){ r -= w; if(r <= 0) return t; }
+  return 'plain';
+}
 function fbClone(o){ return JSON.parse(JSON.stringify(o)); }
 function fbRun(cfg){
   const savedKS = KS, savedBT = BT;
