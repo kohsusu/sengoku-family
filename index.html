@@ -530,7 +530,7 @@
 
 <script>
 'use strict';
-const BUILD = 'p0a';
+const BUILD = 'p1a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -801,6 +801,7 @@ function newState(famName, kamon, clan, mode, region, scen){
     st.fort = 3; st.prestige = 60; st.kani = 1; st.kaniName = pick1(KANI_NAMES);
     const bugyos = ['bugyo_kori','bugyo_kanjo','bugyo_gun'];
     st.retainers.forEach((r,i)=>{ if(i>0){ r.task = bugyos[i-1] || 'bugyo_fushin'; r.role = '奉行'; } });
+    st.retainers[0].task = 'educate';   // 主君不臨庶務:先課子弟(有從屬後可親巡「取次」)
     for(const ex of [
       {task:'bugyo_fushin', bu:34, nai:62, chi:50},
       {task:'bugyo_minsei', bu:28, nai:58, chi:56}
@@ -949,7 +950,7 @@ const TASKS = {
 };
 function bugyoResolve(b){   // 奉行職→當季實務
   switch(b){
-    case 'bugyo_kori':   return S.season===2 ? 'tonden' : S.season===3 ? 'hunt' : 'farm';
+    case 'bugyo_kori':   return S.season >= 2 ? 'tonden' : 'farm';   // 春夏勸農,秋冬闢田
     case 'bugyo_kanjo':  return 'trade';
     case 'bugyo_gun':    return 'drill';
     case 'bugyo_fushin': return (S.suiri||0) < 12 ? 'fushin' : 'shiro';
@@ -8911,13 +8912,19 @@ function resolveTasks(){
     // 臥病中:強制靜養
     if((r.sick||0) > 0){
       r.sick -= 1;
+      if(r.task !== 'rest') r._preTask = r.task;   // 記下本職
       r.task = 'rest';
       r.stamina = clamp(st + 20, 0, 100);
       log(`🤒 ${r.name} 臥病靜養中${r.sick>0?`(尚需 ${r.sick} 季)`:',已見好轉'}。`);
+      if(r.sick <= 0 && r._preTask){               // 癒則歸位,不再永久賦閒
+        const back = r._preTask; r._preTask = null;
+        if(TASKS[back]){ r.task = back; log(`${r.name} 病體漸復,回任${TASKS[back].name}。`); }
+      }
       continue;
     }
     // 過勞病倒判定:傷身損能力
     if(t !== 'rest' && st < 15 && Math.random() < 0.25){
+      r._preTask = r.task;
       r.task = 'rest';
       r.sick = 1;
       const key = ['bu','nai','chi'][Math.floor(Math.random()*3)];
@@ -8931,7 +8938,9 @@ function resolveTasks(){
     // 忠誠影響用命程度:離心者怠工,同心者奮發
     const loy = r === S.retainers[0] ? 100 : (r.loyalty ?? 70);
     const loyMult = loy >= 85 ? 1.1 : loy < 40 ? 0.85 : loy < 55 ? 0.95 : 1;
-    const eff = (st >= 50 ? 1 : st >= 25 ? 0.8 : 0.55) * traitMult(r, t) * kakunMult * loyMult;
+    // 有司專責:奉行職掌一事而精,勝於當主事必躬親(委任之所以值得)
+    const bugyoMult = (S.daimyoMode && (r.task||'').indexOf('bugyo_') === 0) ? 1.3 : 1;
+    const eff = (st >= 50 ? 1 : st >= 25 ? 0.8 : 0.55) * traitMult(r, t) * kakunMult * loyMult * bugyoMult;
     const tired = (st >= 50 ? '' : st >= 25 ? '(疲勞)' : '(過勞!成效大減)')
       + (loyMult < 1 ? '(離心怠工)' : loyMult > 1 ? '(同心奮發)' : '');
     if(t !== 'rest') r.stamina = clamp(st - Math.max(2, (TASKS[t].tire || 12) - (r.trait==='kenkyaku'?4:0)), 0, 100);
@@ -10550,8 +10559,12 @@ function seasonBrief(){
 }
 // 指令適配標:當下這一手的季節與體力後果
 function taskFit(r){
-  const t = r.task, sta = r.stamina ?? 100, T = TASKS[t] || {};
+  let t = r.task;
+  const isBugyo = S.daimyoMode && (r.task||'').indexOf('bugyo_') === 0;
+  if(isBugyo) t = bugyoResolve(t);   // 奉行:看它當季實際在做什麼
+  const sta = r.stamina ?? 100, T = TASKS[r.task] || {};
   const tags = [];
+  if(isBugyo && TASKS[t]) tags.push(['本季:' + TASKS[t].name.replace(/\(.*\)/,''), '']);   // 奉行當季實務(原本畫面上看不出來)
   if(t === 'farm'){
     if(S.season === 3) tags.push(['⚠冬農無效','loyLow']);
     else if(S.season === 2) tags.push(['秋半效','dim']);
@@ -10607,7 +10620,7 @@ function render(){
     for(const k in TASKS){
       if(TASKS[k].clan && TASKS[k].clan !== S.clanType) continue;  // 類型專屬指令
       const isB = k.indexOf('bugyo_') === 0;
-      if(S.daimyoMode){ if(!isB && k !== 'educate' && k !== 'rest') continue; }  // 大名模式:奉行制
+      if(S.daimyoMode){ if(!isB && k !== 'educate' && k !== 'rest' && k !== 'toritsugi') continue; }  // 大名模式:奉行制+取次(巡撫從屬)
       else if(isB) continue;
       const o = document.createElement('option');
       o.value = k; o.textContent = TASKS[k].name;
@@ -10615,8 +10628,17 @@ function render(){
       sel.appendChild(o);
     }
     if(TASKS[r.task] && TASKS[r.task].clan && TASKS[r.task].clan !== S.clanType) r.task = 'rest';
-    if(S.daimyoMode && r.task && r.task.indexOf('bugyo_') !== 0 && r.task !== 'educate' && r.task !== 'rest') r.task = 'rest';
-    sel.onchange = () => { r.task = sel.value; $('taskHint').textContent = TASKS[sel.value].hint;
+    if(S.daimyoMode && r.task && r.task.indexOf('bugyo_') !== 0 && !['educate','rest','toritsugi'].includes(r.task)) r.task = 'rest';
+    sel.onchange = () => {
+      const want = sel.value, prev = r.task;
+      if(S.daimyoMode && want.indexOf('bugyo_') === 0){
+        const holder = S.retainers.find(x=>x !== r && !x.spare && x.task === want);
+        if(holder){   // 一職一人:與原任者對調,免得有人閒置
+          holder.task = (prev && prev.indexOf('bugyo_') === 0) ? prev : 'rest';
+          log(`${holder.name} 與 ${r.name} 職掌對調——${TASKS[want].name}改由 ${r.name} 掌之。`);
+        }
+      }
+      r.task = want; $('taskHint').textContent = TASKS[sel.value].hint;
       const fe = $('rfit_'+i); if(fe) fe.innerHTML = taskFit(r).map(([t2,c2])=>`<b class="${c2}">${t2}</b>`).join('・');
       save(); };
     sel.onfocus  = () => { $('taskHint').textContent = TASKS[r.task].hint; };
@@ -11066,7 +11088,8 @@ function openLord(key){
 function renderRivals(){
   if(!S.rivals){ $('rivalBox').innerHTML = ''; return; }
   // 近國番付:只列兵馬或使者可及者(≤240),遠國之家仍在地圖與世上活動
-  const entries = S.rivals.filter(f=>f.alive && pdist(f) <= 240).map(f=>({f, sc:score(f)}));
+  // 自家從屬不論遠近必列——遠國之臣照樣納貢,豈可無從管束
+  const entries = S.rivals.filter(f=>f.alive && (pdist(f) <= 240 || f.lord === 'player')).map(f=>({f, sc:score(f)}));
   entries.push({player:true, sc:playerScore()});
   entries.sort((a,b)=>b.sc-a.sc);
   const mine = myVassals();
