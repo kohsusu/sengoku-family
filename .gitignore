@@ -83,3 +83,5 @@ firebase.json
 public/
 發佈.bat*
 *.bat.bak
+firebase.json*
+.firebaserc*

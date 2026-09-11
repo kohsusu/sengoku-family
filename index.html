@@ -530,7 +530,7 @@
 
 <script>
 'use strict';
-const BUILD = 'jt1';
+const BUILD = 'ai2';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -2206,35 +2206,104 @@ function planLabel(f){
   }
   return p.name;
 }
+// ══════════ 眾の智:局勢評估(一家之眼所見的天下)——評定與派工共用,每季快取一次 ══════════
+function rSituation(f){
+  const stamp = S.year*4 + S.season;
+  if(f._sitAt === stamp && f._sit) return f._sit;
+  const nb = neighborsOf(f).filter(x=>x.alive);
+  const myDef = Math.max(1, rDefense(f));
+  let threat = 0, threatOf = null, prey = null, preyV = 0, aim = null, aimV = 0;
+  for(const x of nb){
+    if(!(x.lord && x.lord === f.lord) && !(f.allies||[]).includes(x.id) && x.id !== f.marrTo){
+      // 威脅=兵勢比 × 敵意(宿怨・性格・方針已指向我)
+      const hostile = 0.5 + rGrudge(x, f.id)*0.008
+        + ((x.persona==='武斷'||x.persona==='海賊') ? 0.3 : 0)
+        + ((x.plan && x.plan.target === f.id) ? 0.8 : 0);
+      const t = (rSol(x) / Math.max(1, rSol(f))) * hostile * (1 - (f.fort||0)*0.06);
+      if(t > threat){ threat = t; threatOf = x; }
+    }
+    const v = rPreyScore(f, x);
+    if(v > preyV){ preyV = v; prey = x; }
+    // 蓄力之志:今日未及,他年可圖——記下最肥而暫時啃不動的那一家
+    const a = rAimScore(f, x);
+    if(a > aimV){ aimV = a; aim = x; }
+  }
+  if((S.rumors||[]).some(r=>r.target === f.id)) threat = Math.max(threat, 1.25);   // 風聞指向自己=兵臨在即
+  const sit = { threat, threatOf, prey, preyV, aim, aimV,
+    growRoom: clamp(1 - f.koku / rivalKokuCap(), 0, 1),
+    cash: (f.money||0) / Math.max(60, f.koku*0.25),
+    solRatio: clamp(rSol(f) / Math.max(1, f.koku*0.16), 0, 2) };
+  f._sit = sit; f._sitAt = stamp;
+  return sit;
+}
+const R_NERVE = f => (f.persona==='武斷'||f.persona==='海賊') ? 1.08
+                   : (f.persona==='保守'||f.persona==='名門') ? 1.45
+                   : f.persona==='門徒' ? 1.35 : 1.22;   // 動兵所求之兵勢倍數(對其城守)
+// 蓄力評分:兵勢未逮而利厚者——值得為它練兵數年(這是「養成戰機」,不是空等)
+function rAimScore(f, t){
+  if(!t || !t.alive || t === f) return 0;
+  if(t.lord && t.lord === f.lord) return 0;
+  if((f.allies||[]).includes(t.id) || t.id === f.marrTo) return 0;
+  if(f.persona === '門徒' && t.persona === '門徒') return 0;
+  const need = rDefense(t) * R_NERVE(f);
+  const now = rSol(f);
+  if(now >= need || now < need * 0.45) return 0;                  // 已可圖、或差距懸殊不自量力
+  return (t.koku * 0.5 + rGrudge(f, t.id) * 5) * (now / need);    // 越接近動兵之期,越值得再忍
+}
+// 獵物評分:值不值得打——勝算・價值・折兵之費・報復之禍,缺一不可(沒把握則不興兵)
+function rPreyScore(f, t){
+  if(!t || !t.alive || t === f) return 0;
+  if(t.lord && t.lord === f.lord) return 0;                       // 同奉一主,不相攻
+  if((f.allies||[]).includes(t.id) || t.id === f.marrTo) return 0;
+  if(f.persona === '門徒' && t.persona === '門徒') return 0;
+  const help = (f.allies||[]).map(id=>S.rivals.find(x=>x.id===id))
+    .filter(x=>x && x.alive && x!==t && (rGrudge(x, t.id) >= 15 || x.pactVs === t.id))
+    .reduce((a,x)=>a + rSol(x)*0.5, 0);
+  const att = rSol(f) + help;
+  const shocked = (t.shockUntil||0) >= S.year;                    // 新敗・主喪——趁其病
+  const def = Math.max(1, rDefense(t) * (shocked ? 0.78 : 1));
+  const p = att / (att + def);
+  const nerve = R_NERVE(f);
+  if(att < def * nerve) return 0;   // 未及家風所要求的兵勢倍數,不動兵(與出陣門檻同尺)
+  // 田土為久利,兵員可再募——戰國的算盤這麼打
+  const takeover = (t.koku * 0.45 < 200 || rSol(t) < 10);         // 一擊可滅者,利最厚
+  const gainWin  = (takeover ? t.koku*0.8 + (t.money||0)*0.6 : t.koku*0.28) * 1.6;   // 田土世世為利,又少一敵
+  const lossSol  = att * (p*0.15 + (1-p)*0.30) * 1.2;             // 折兵之費(兵出於田,歲歲可再募)
+  let revenge    = ((t.allies||[]).length + (t.marrTo ? 1 : 0)) * 120;
+  if(t.lord === 'player') revenge += playerPower() * 0.5;
+  else if(t.lord) revenge += lordPower(t.lord) * 0.1;             // 動其從屬,即犯其主(然亂世常事)
+  return p*gainWin - lossSol - (1-p)*t.koku*0.05 + rGrudge(f, t.id)*4 - revenge*0.5;
+}
 // 評定:依家業、性格、局勢定下未來數年的方針
 function rivalPlan(f, lines){
-  const wt = {fukoku:10, kyohei:6, chikujo:5, heidon:0, kizoku:4, jiritsu:0};
-  if(f.clanKind === 'merchant'){ wt.fukoku += 12; wt.kizoku += 6; wt.kyohei -= 3; }
-  if(f.clanKind === 'suigun'){ wt.fukoku += 7; wt.kyohei += 3; }
-  if(f.clanKind === 'temple'){ wt.fukoku += 8; wt.chikujo += 4; wt.kizoku -= 4; }
-  if(f.clanKind === 'shinobi'){ wt.kyohei += 5; wt.kizoku += 4; }
-  if(f.persona === '武斷'){ wt.kyohei += 12; wt.heidon += 14; }
-  if(f.persona === '保守'){ wt.chikujo += 10; wt.fukoku += 5; wt.heidon -= 6; }
-  if(f.persona === '名門'){ wt.kizoku += 8; wt.chikujo += 5; }
-  if(f.persona === '海賊'){ wt.kyohei += 6; wt.heidon += 6; }
-  if(f.persona === '門徒'){ wt.fukoku += 8; wt.chikujo += 6; wt.kizoku = -99; }
-  if((f.fort||0) === 0) wt.chikujo += 8;
-  if((f.fort||0) >= 4) wt.chikujo = -99;
-  if(f.sol < f.koku*0.05) wt.kyohei += 10;                          // 兵備空虛,先補兵
+  // ── 效用評定:先看家底缺什麼、四鄰有何虛實,性格只是偏好而非全部 ──
+  const sit = rSituation(f);
+  const wt = {
+    fukoku:  7 + sit.growRoom * 13,                                   // 有地可闢則闢之
+    kyohei:  3 + Math.max(0, 1 - sit.solRatio) * 14 + sit.threat * 9
+             + clamp(sit.aimV / 90, 0, 12),                        // 為所圖之家厲兵秣馬
+    chikujo: (f.fort||0) >= 4 ? -99 : 2 + sit.threat * 13 + ((f.fort||0) === 0 ? 5 : 0),
+    heidon:  sit.prey ? clamp(sit.preyV / 6, 0, 28) * (1 + (1 - sit.growRoom) * 0.5) : -99,   // 地已盡闢者,其志在四方
+    kizoku:  3 + sit.threat * 7,                                      // 受脅者思庇護
+    jiritsu: -99
+  };
+  const target = sit.prey;
+  f.aimAt = sit.aim ? sit.aim.id : null;                           // 志在何方(蓄力之的)
+  if(f.clanKind === 'merchant'){ wt.fukoku += 8; wt.kizoku += 4; wt.kyohei -= 2; }
+  if(f.clanKind === 'suigun'){ wt.fukoku += 5; wt.kyohei += 2; }
+  if(f.clanKind === 'temple'){ wt.fukoku += 6; wt.chikujo += 3; wt.kizoku -= 3; }
+  if(f.clanKind === 'shinobi'){ wt.kyohei += 3; wt.kizoku += 3; }
+  if(f.persona === '武斷'){ wt.kyohei += 8; wt.heidon += 9; }
+  if(f.persona === '保守'){ wt.chikujo += 7; wt.fukoku += 4; wt.heidon -= 8; }
+  if(f.persona === '名門'){ wt.kizoku += 6; wt.chikujo += 3; }
+  if(f.persona === '海賊'){ wt.kyohei += 4; wt.heidon += 6; }
+  if(f.persona === '商業'){ wt.fukoku += 5; wt.kizoku += 2; }
+  if(f.persona === '門徒'){ wt.fukoku += 6; wt.chikujo += 4; wt.kizoku = -99; }
   if(f.lord && f.lord !== 'player'){
     const lp = lordPower(f.lord), best = strongestLord();
-    if(best && lordPower(best) > lp*1.6) wt.jiritsu += 10;          // 主家不振,思去就
-    else wt.kizoku += 6;
-  }else if(!f.lord) wt.kizoku += 3;
-  // 併吞目標:兵力遠弱於己、關係惡劣或有宿怨、且非同主家
-  const prey = neighborsOf(f).filter(x=> x.lord !== 'player' &&
-    !(x.lord && x.lord === f.lord) && !(f.allies||[]).includes(x.id) && x.id !== f.marrTo &&
-    rDefense(x) < rSol(f)*1.1);
-  let target = null;
-  if(prey.length){
-    target = prey.reduce((a,b)=> (rGrudge(f,b.id) + b.koku*0.01) > (rGrudge(f,a.id) + a.koku*0.01) ? b : a);
-    wt.heidon += 8 + rGrudge(f, target.id)*0.3;
-  }else wt.heidon = -99;
+    if(best && lordPower(best) > lp*1.6) wt.jiritsu = 6 + (f.persona==='武斷' ? 5 : 0);   // 主家不振,思去就
+    else wt.kizoku += 5;
+  }else if(!f.lord) wt.kizoku += 2;
   const keys = Object.keys(wt).filter(k=>wt[k] > 0);
   if(!keys.length){ f.plan = {type:'fukoku', since:S.year}; return; }
   const tot = keys.reduce((a,k)=>a+wt[k],0);
@@ -2259,29 +2328,39 @@ function simRivalSeason(){
       f.sol = Math.max(0, f.sol - cut); f.money = 0;
     }
     if(!f.plan) rivalPlan(f, null);
-    // 依方針與時令擇一務——與玩家的家臣派遣同構
-    const P = f.plan.type;
-    const solCapF = ri(f.koku*0.16);
-    let cmd;
-    if(season === 0 || season === 1){                       // 春夏:農時
-      cmd = P === 'kyohei' ? (Math.random()<0.45?'drill':'nomu')
-          : P === 'chikujo' ? (Math.random()<0.5?'fushin':'nomu') : 'nomu';
-    }else if(season === 2){                                  // 秋:收穫與商賈
-      cmd = (f.clanKind==='merchant'||f.clanKind==='suigun') ? 'trade'
-          : P === 'fukoku' ? 'tonden' : 'trade';
-    }else{                                                   // 冬:農閒,練兵築城
-      cmd = P === 'chikujo' ? 'fushin' : P === 'fukoku' ? 'tonden' : 'drill';
-    }
-    // 兵臨城下豈能種田:風聞指向自己或宿怨深者環伺 → 整軍備戰壓倒一切
-    const threatened = (S.rumors||[]).some(r=>r.target === f.id)
-      || neighborsOf(f).some(x=> rGrudge(x, f.id) >= 35 && rSol(x) > rSol(f)*1.2);
-    if(threatened) cmd = (f.sol < solCapF && f.money >= 25) ? 'drill' : ((f.fort||0) < 5 ? 'fushin' : 'drill');
-    // 不浪費行動(玩家不會做白工):兵滿轉屯田、城成轉屯田、錢滿轉買地
-    if(cmd === 'drill' && f.sol >= solCapF) cmd = 'tonden';
-    if(cmd === 'fushin' && (f.fort||0) >= 5) cmd = 'tonden';
-    if(cmd === 'trade' && f.money > f.koku * 1.2) cmd = 'tonden';
     const mN = bestMan(f, 'nai'), mB = bestMan(f, 'bu');
     const nai = mN ? mN.nai : 42;                           // 內政看家臣,無人則粗陋自理
+    const buV = mB ? mB.bu : 40;
+    // ── 邊際效益派工:諸務折成「石高當量/季」擇其最大——承平則墾,有警則備,匱乏則賈 ──
+    const sit = rSituation(f);
+    const P = f.plan.type;
+    const solCapF = ri(f.koku*0.18*(1+(f.fort||0)*0.03));
+    // 錢貴賤繫於有無用處:練兵未滿、城砦未成方需錢;二者俱足則金帛徒積倉廩
+    const sink = (f.sol < solCapF ? 100 : 0) + ((f.fort||0) < 5 ? FORT_COST(f.fort||0)*0.4 : 0);
+    const cover = sink > 0 ? clamp((f.money||0) / sink, 0, 2) : 2;
+    const urgent = (f.money < 30 && f.sol < solCapF) ? 1.8 : 1;                    // 囊中無錢而兵未足:先賈後兵
+    const moneyV = sink <= 0 ? 0.04 : 0.45 * clamp(1.6 - cover, 0.12, 1.6) * urgent;
+    const solV = 1.8 * (0.4 + sit.threat * 1.6)
+               * (P==='heidon' ? 1.45 : P==='kyohei' ? 1.25 : 1);                   // 兵貴於臨戰之際
+    const V = {};
+    const capped = f.koku >= rivalKokuCap()*0.995;                                  // 地已盡闢,再墾無益
+    const landV = 1 + 0.18 * solV * 0.5;      // 田土為本:多一石之地,兵額亦隨之而長
+    V.tonden = capped ? 0 : nai*0.16*(1 + 0.3*fDev(f,'shinden'))*Math.sqrt(1400/Math.max(700,f.koku))
+             * (0.25 + sit.growRoom*1.1) * landV * (P==='fukoku' ? 1.35 : 1);
+    V.nomu   = capped ? 0 : (f.koku*0.0025 + 1) * [1.15, 1.0, 0.45, 0.12][season] * landV;   // 農時有節,冬耕無益
+    V.drill  = (f.money >= 25 && f.sol < solCapF)
+             ? (4 + f.koku/450 + buV*0.04) * (S.year>=1570?1.4:1) * solV - 25*moneyV : 0;
+    V.trade  = (8 + f.koku*0.012*(f.clanKind==='merchant'?1.6:1)) * (1 + 0.35*fDev(f,'bashaku')) * moneyV
+             * (f.clanKind==='merchant' ? 1.5 : f.clanKind==='suigun' ? 1.25 : 1);
+    if((f.fort||0) < 5){
+      const fc = FORT_COST(f.fort||0), prog = (10 + nai*0.14) / fc;
+      V.fushin = prog * (f.koku * 0.15 * (0.12 + sit.threat*0.9)) * (P==='chikujo' ? 1.3 : 1) - prog * fc*0.4 * moneyV;
+    }else V.fushin = 0;
+    let cmd = 'nomu', bestV = -1e9;
+    for(const k in V){
+      const v = V[k] * (0.88 + Math.random()*0.24);          // 一成半的人意——同鄉諸家不至於步調一致
+      if(v > bestV){ bestV = v; cmd = k; }
+    }
     switch(cmd){
       case 'nomu':   f.koku = Math.min(rivalKokuCap(), f.koku + ri(f.koku*0.0025 + 1)); break;
       case 'tonden': f.koku = Math.min(rivalKokuCap(), f.koku + ri(nai*0.16*(1 + 0.3*fDev(f,'shinden'))*Math.sqrt(1400/Math.max(700,f.koku)))); break;
@@ -2432,16 +2511,26 @@ function simRivalPolitics(lines){
   const live = S.rivals.filter(f=>f.alive && f.lord !== 'player');
   if(live.length < 2) return;
   // ── 同盟:弱者相結,對象須無宿怨 ──
-  if(Math.random() < 0.3){
+  if(Math.random() < 0.42){
     const a = pick1(live);
-    const cands = neighborsOf(a).filter(b=> b.lord !== 'player' && !(a.allies||[]).includes(b.id) &&
-      rGrudge(a,b.id) < 20 && rGrudge(b,a.id) < 20 && b.id !== (a.plan&&a.plan.target));
-    if(cands.length){
-      const b = pick1(cands);
-      const threat = live.find(x=> x!==a && x!==b && score(x) > (score(a)+score(b))*0.7);
-      if(threat && Math.random() < 0.5){
+    const sit = rSituation(a);
+    const th = sit.threatOf;
+    if(th && sit.threat >= 0.7){
+      // 遠交近攻:結盟的對象不是「隔壁」,而是「大患的隔壁」——成夾擊之勢者為上
+      const cands = live.filter(b=> b!==a && b!==th && !(a.allies||[]).includes(b.id)
+        && rGrudge(a,b.id) < 20 && rGrudge(b,a.id) < 20
+        && b.id !== (a.plan && a.plan.target) && b.id !== a.marrTo
+        && !(b.lord && th.lord && b.lord === th.lord));
+      if(cands.length){
+        const sc = b => (isNeighbor(b, th) ? 2.2 : 0.6)                 // 與大患接壤=可成夾擊
+                      + (rGrudge(b, th.id) >= 15 ? 1.6 : 0)             // 同仇敵愾
+                      + (isNeighbor(a, b) ? 0.3 : 0.9)                  // 遠交(不與我爭地者可久)
+                      + clamp(rSol(b)/Math.max(1,rSol(a)), 0, 2)*0.6;   // 帶得動兵
+        const b = cands.reduce((x,y)=> sc(y) > sc(x) ? y : x);
         (a.allies = a.allies||[]).push(b.id); (b.allies = b.allies||[]).push(a.id);
-        lines.push(`🤝 ${fname(a)}與${fname(b)}結攻守之盟——共備${fname(threat)}之勢。`);
+        a.pactVs = th.id; b.pactVs = th.id;                       // 盟約所指——伐之則兩家合兵
+        lines.push(`🤝 ${fname(a)}與${fname(b)}結攻守之盟——共備${fname(th)}之勢`+
+          (isNeighbor(b, th) ? `(其地正扼${fname(th)}之側,成夾擊之形)。` : '(遠交近攻之策)。'));
       }
     }
   }
@@ -2488,9 +2577,9 @@ ${S.famName}家亦在受請之列。`,
     if(!t || !t.alive){ rivalPlan(f, null); continue; }
     // 盟友可合兵——弱者聯手才吞得下強鄰
     const help = (f.allies||[]).map(id=>S.rivals.find(x=>x.id===id))
-      .filter(x=>x && x.alive && x!==t && rGrudge(x, t.id) >= 15)
+      .filter(x=>x && x.alive && x!==t && (rGrudge(x, t.id) >= 15 || x.pactVs === t.id))
       .reduce((a,x)=>a + ri(rSol(x)*0.5), 0);
-    const need = ri(rDefense(t) * 1.25);
+    const need = ri(rDefense(t) * R_NERVE(f));   // 動兵之期:家風各有膽識
     if(rSol(f) + help >= need && !(S.rumors||[]).some(r=>r.who===f.id)){
       pushRumor({who:f.id, kind:'invade', target:t.id, at:S.year+1});
     }
@@ -2506,12 +2595,14 @@ function resolveRumors(lines){
     if(!f || !f.alive || !t || !t.alive) continue;
     if(r.warned) t.sol = ri(t.sol * 1.35);                       // 你通報過,對方已備戰
     const help = (f.allies||[]).map(id=>S.rivals.find(x=>x.id===id))
-      .filter(x=>x && x.alive && x!==t).reduce((a,x)=>a + ri(rSol(x)*0.5), 0);
-    const pf = rSol(f) + help, pt = rDefense(t);
+      .filter(x=>x && x.alive && x!==t && (rGrudge(x, t.id) >= 15 || x.pactVs === t.id))
+      .reduce((a,x)=>a + ri(rSol(x)*0.5), 0);
+    const pf = rSol(f) + help, pt = rDefense(t) * (((t.shockUntil||0) >= S.year) ? 0.85 : 1);   // 趁其新敗主喪
     if(help > 0) lines.push(`${fname(f)}會同盟友之兵 ${help} 眾,共討${fname(t)}。`);
     const win = Math.random() < pf/(pf+pt);
     const lossF = ri(pf*(win?0.15:0.3)), lossT = ri(rSol(t)*(win?0.35:0.15));
     f.sol = Math.max(0, f.sol - lossF); t.sol = Math.max(0, t.sol - lossT);
+    f.shockUntil = S.year + (win ? 0 : 1); t.shockUntil = S.year + (win ? 2 : 1);
     addGrudge(t, f.id, 40);
     if(win){
       if(t.koku * 0.45 < 200 || rSol(t) < 10){                   // 已無力再戰——併吞
@@ -2923,7 +3014,12 @@ function simLordKiritori(lines){
   const prey = S.rivals.filter(f => f.alive && !f.lord && f.persona !== '門徒'
                                  && reach.has(CLAN_PROV[f.id]));
   if(!prey.length) return;
-  const f = prey.reduce((a,b)=>a.koku<=b.koku?a:b);
+  // 擇肥而噬:城堅者難拔、性剛者難服、心向我者易致——取其可得之利最厚者
+  const myPow = Math.max(1, lordPower(key));
+  const kScore = x => x.koku * (1 - (x.fort||0)*0.09)
+    * (x.persona==='武斷' ? 0.7 : (x.persona==='保守'||x.persona==='名門') ? 1.15 : 1)
+    * (1 + clamp(lordAppeal(x, key)/myPow, 0, 2)*0.35);
+  const f = prey.reduce((a,b)=> kScore(b) > kScore(a) ? b : a);
   S.lordPrey = {lord:key, id:f.id};
   S.lords[key].kiriCd = 2 + ri(Math.random()*2);
   lines.push(`📯【風聞】${LORD_META[key].name}家評定已決:「${fname(f)}(${f.seat})不奉誰家旗號,來春切り取り!」`+
@@ -2939,29 +3035,52 @@ function simLordFeuds(lines){
   }
   if(Math.random() > 0.30) return;
   const busy = new Set(S.warPair || []);   // 正打大戰者無暇他顧
-  const al = aiLords().filter(k => !S.lords[k].submitted && (S.lords[k].wounds||0) < 0.2 && !busy.has(k));
+  const att = aiLords().filter(k => !S.lords[k].submitted && (S.lords[k].wounds||0) < 0.2 && !busy.has(k));
+  const def = aiLords().filter(k => !S.lords[k].submitted && !busy.has(k));
   const pairs = [];
-  for(const a of al) for(const b of al){
-    if(a >= b) continue;
+  for(const a of att) for(const b of def){
+    if(a === b) continue;
     // 兵鋒所及相交即可開戰——無主之國(信濃等)正是諸家必爭的緩衝帶
     const ra = lordReach(a), rb = lordReach(b);
     if(![...ra].some(p => rb.has(p))) continue;
+    const wk = (S.lords[b].wounds||0) >= 0.15;                    // 新敗之國,正可乘之
     const r = lordPower(a) / Math.max(1, lordPower(b));
-    if(r >= 0.6 && r <= 1.7) pairs.push([a, b]);
+    if(r >= (wk ? 0.45 : 0.6) && r <= (wk ? 3.0 : 1.7)) pairs.push([a, b, wk]);
   }
   if(!pairs.length) return;
-  const [a, b] = pick1(pairs);
+  const hot = pairs.filter(x=>x[2]);                              // 趁虛者優先
+  const [a, b] = (hot.length && Math.random() < 0.7) ? pick1(hot) : pick1(pairs);
   if(S.allegiance === a || S.allegiance === b){
     // 你的主家捲入境目之爭——軍役徵召(走既有機制,勝敗由你的戰功左右)
     const enemy = S.allegiance === a ? b : a;
     lines.push(`⚔【境目相論】${LORD_META[a].name}家與${LORD_META[b].name}家因境目寸土相爭,兵戈已起!`);
     startCampaign(S.allegiance, enemy, '境目の合戰');
   }else{
-    const pA = lordPower(a), pB = lordPower(b);
+    const pA = lordPower(a) * (1 - (S.lords[a].wounds||0));
+    const pB = lordPower(b) * (1 - (S.lords[b].wounds||0));       // 創重者力不從心
     const w = Math.random() < pA/(pA+pB) ? a : b, l = w === a ? b : a;
     warAftermath(w, l);
     lines.push(`⚔【境目相論】${LORD_META[a].name}家與${LORD_META[b].name}家戰於境上——${LORD_META[w].name}方得勝,奪地百五十石。`);
   }
+}
+// 大名の智:調略對象評分——利之所在、心之所向、繫之鬆緊,三者相乘
+function lordChouTarget(key){
+  const reach = lordReach(key);
+  const myPow = Math.max(1, lordPower(key));
+  let best = null, bs = 0;
+  for(const f of S.rivals){
+    if(!f.alive || f.lord === key || f.persona === '門徒') continue;
+    if(!reach.has(CLAN_PROV[f.id])) continue;
+    if(f.lord === 'player' && playerPower() > myPow*0.8) continue;      // 你夠強,調略無功
+    const loose = !f.lord ? 48                                          // 無主者最易招徠
+                : f.lord === 'player' ? 18
+                : Math.max(6, 60 - (f.ltrust ?? 60));                   // 對主家離心者,好挖
+    const s2 = (f.koku*0.01 + rSol(f)*0.06)
+             * (clamp(lordAppeal(f, key)/myPow, 0, 3) + 0.35)
+             * (loose/40);
+    if(s2 > bs){ bs = s2; best = f; }
+  }
+  return best;
 }
 function simLords(lines){
   for(const key of aliveLords()){
@@ -2974,30 +3093,29 @@ function simLords(lines){
       if(Math.random() < 0.5) lines.push(`${LORD_META[key].name}家息兵整備,收攏潰卒、四鄉徵募——兵鋒漸復(戰創現 ${ri(L.wounds*100)}%)。`);
       continue;
     }
+    // ── 重臣任務:依國政所需分工(戰時整軍・平時開墾・有隙可乘則遣使調略) ──
     let grow = 0, best = null, bestV = 0;
+    const atWar = (S.warPair||[]).includes(key) || (L.wounds||0) > 0.05;
+    const chouTgt = lordChouTarget(key);
+    const needBu  = atWar ? 1.25 : 0.5;
+    const needNai = L.demesne > 8000 ? 0.7 : 1.15;
+    const chouMan = chouTgt ? roster.reduce((a,b)=> (b.chi||0) > (a.chi||0) ? b : a) : null;
     for(const v of roster){
-      const roll = Math.random();
-      if(roll < 0.55){                                   // 內政:開墾檢地
-        const g = v.nai * 0.28 * (0.7 + Math.random()*0.6) * (L.demesne > 8000 ? 0.4 : 1);
-        grow += g;
-        if(g > bestV){ bestV = g; best = {v, act:'督導檢地開墾'}; }
-      }else if(roll < 0.8){                              // 軍備:兵農整備(亦計入石高基礎)
-        const g = v.bu * 0.12 * (0.7 + Math.random()*0.6);
-        grow += g;
-        if(g > bestV){ bestV = g; best = {v, act:'整備兵農'}; }
-      }else{                                             // 調略:拉攏他家國人眾(限兵鋒所及之國——齋藤調略不到田原的戶田)
-        const reach = lordReach(key);
-        const pool = S.rivals.filter(f=>f.alive && f.lord !== key && f.persona !== '門徒'
-                                     && reach.has(CLAN_PROV[f.id]));
-        if(pool.length && Math.random() < v.chi/220){
-          const tgt = pool[Math.floor(Math.random()*pool.length)];
-          const wasPlayers = tgt.lord === 'player';
-          if(wasPlayers && playerPower() > lordPower(key)*0.8) continue;   // 你夠強,調略無功
-          tgt.lord = key;
-          lines.push(`⚡ ${LORD_META[key].name}家 ${v.n} 調略成功,${fname(tgt)}轉投${LORD_META[key].name}家!`+
+      if(v === chouMan && v.chi >= 55){                  // 調略:一年至多一人專任,且非智者不遣
+        if(Math.random() < v.chi/200){
+          const wasPlayers = chouTgt.lord === 'player';
+          chouTgt.lord = key;
+          lines.push(`⚡ ${LORD_META[key].name}家 ${v.n} 調略成功,${fname(chouTgt)}轉投${LORD_META[key].name}家!`+
             (wasPlayers ? `——${S.famName}家失一從屬!` : ''));
         }
+        continue;
       }
+      const doBu = (v.bu * needBu) > (v.nai * needNai);
+      const g = doBu ? v.bu * 0.12 * (0.7 + Math.random()*0.6)
+                     : v.nai * 0.28 * (0.7 + Math.random()*0.6) * (L.demesne > 8000 ? 0.4 : 1);
+      if(doBu && L.wounds) L.wounds = Math.max(0, L.wounds - 0.025);   // 整備兵農:收攏潰卒,戰創漸復
+      grow += g;
+      if(g > bestV){ bestV = g; best = {v, act: doBu ? '整備兵農' : '督導檢地開墾'}; }
     }
     // 甲州金山之利:黑川・湯之奧諸金山歲出黃金——信玄多線開戰的底氣(史實:甲斐才是戰國金山的代名詞)
     if(key === 'takeda'){
@@ -3034,7 +3152,8 @@ function simLords(lines){
   if(al.length >= 2){
     const top = al.reduce((a,b)=>lordPower(a)>=lordPower(b)?a:b);
     const weak = al.filter(k=>k!==top && lordPower(k) < lordPower(top)*0.7);
-    if(weak.length >= 2 && !S.lordAlly && Math.random() < 0.25){
+    const pressed = weak.some(k => (S.warPair||[]).includes(k) || (S.lords[k].wounds||0) > 0.1);
+    if(weak.length >= 2 && !S.lordAlly && Math.random() < (pressed ? 0.45 : 0.25)){
       S.lordAlly = {mem:weak.slice(0,2), vs:top, since:S.year};
       lines.push(`🤝【大名同盟】${S.lordAlly.mem.map(k=>LORD_META[k].name+'家').join('與')}結盟,共抗${LORD_META[top].name}家。`);
     }
@@ -3548,6 +3667,7 @@ function simRivals(lines){
     if(Math.random() < 0.06){
       if(Math.random() < 0.12){ collapseRival(f, '當主暴斃且無嗣', lines); continue; }
       f.prestige = Math.max(0, f.prestige - 3);
+      f.shockUntil = S.year + 1;                      // 主喪家疑,鄰家看在眼裡
       lines.push(`${fname(f)}當主歿,其子繼立。`);
     }
   }
@@ -3569,6 +3689,7 @@ function simRivals(lines){
         const take = ri(l.koku*0.08);
         w.koku += take; l.koku -= take;
         w.sol = Math.max(0, w.sol - ri(rSol(w)*0.08)); l.sol = Math.max(0, l.sol - ri(rSol(l)*0.15));
+        l.shockUntil = S.year + 1;                    // 新敗之師,四鄰環伺
         addGrudge(l, w.id, 22); addGrudge(tgt, agg.id, 10);
         return {w, l, take};
       };
@@ -10077,6 +10198,7 @@ const EVENTS = [
           {label:'頓首拜受', sub:'威望 +12、好感 +15;自此為主家鐵桿(叛離代價加倍)', fn:()=>{
             S.henki = key;
             const lord = S.retainers[0];
+            if(!lord || !lord.name){ gainPrestige(12); addFavor(L, (15)); return; }   // 家中無人可拜受(絕嗣之際)
             lord.name = lord.name.slice(0, S.famName.length) + pick1(['信','義','元','氏','長','康']) + lord.name.slice(S.famName.length+1);
             gainPrestige(12); addFavor(L, (15));
             log(`⭐ 拜受偏諱,當主改名「${lord.name}」——${M.name}家與${S.famName}家,自此血脈相連。`,'good');
