@@ -530,7 +530,7 @@
 
 <script>
 'use strict';
-const BUILD = 'ai2';
+const BUILD = 'p0a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1441,6 +1441,7 @@ function rivalEndow(f){
     while(f.men.length < n) f.men.push(genRivalMan(f));
     f.menSeeded = 1;
   }
+  if(f.ltrust == null) f.ltrust = 60;   // 對主家的信心:基準六分(新局與舊檔一併補齊)
   f.money  = f.money  ?? ri(f.koku * (f.clanKind==='merchant' ? 0.35 : f.clanKind==='suigun' ? 0.22 : 0.12));
   f.sol    = f.sol    ?? ri(f.koku * 0.08);
   f.fort   = f.fort   ?? (f.persona==='武斷' ? 1 : 0);
@@ -1997,6 +1998,7 @@ const meiboTier = () => MEIBO_TIERS.reduce((a,t)=> S.prestige >= t.at ? t : a, M
 const meiboMor    = () => Math.min(S.prestige, 120) * 0.12;      // 開戰士氣 最多 +14
 const meiboRonin  = () => clamp(0.55 + S.prestige/220, 0.4, 1.25); // 名浪人來投與應聘
 const meiboLoyal  = () => S.prestige / 100;                       // 歲末忠誠自然回復
+const vassalCap   = () => 4 + (S.kani||0)*2 + Math.floor(S.prestige/30);   // 安堵得起的從屬家數:名分所及
 const meiboHold   = () => Math.min(S.prestige / 300, 0.30);      // 從屬眾維繫・勧誘(上限 +30%)
 const meiboKani   = () => clamp(1 - S.prestige/400, 0.6, 1);      // 官位獻金折扣
 const meiboEnvy   = () => Math.max(0, S.prestige - 90) * 0.25;    // 樹大招風:招忌之數
@@ -2299,11 +2301,14 @@ function rivalPlan(f, lines){
   if(f.persona === '海賊'){ wt.kyohei += 4; wt.heidon += 6; }
   if(f.persona === '商業'){ wt.fukoku += 5; wt.kizoku += 2; }
   if(f.persona === '門徒'){ wt.fukoku += 6; wt.chikujo += 4; wt.kizoku = -99; }
-  if(f.lord && f.lord !== 'player'){
+  if(f.lord === 'player'){
+    wt.heidon = -99;      // 奉我旗號者,未得下知不得擅開邊釁(此方針原本永不執行,卻照樣寫在番付上)
+    wt.kizoku += 6;       // 其志在厚結主家
+  }else if(f.lord){
     const lp = lordPower(f.lord), best = strongestLord();
     if(best && lordPower(best) > lp*1.6) wt.jiritsu = 6 + (f.persona==='武斷' ? 5 : 0);   // 主家不振,思去就
     else wt.kizoku += 5;
-  }else if(!f.lord) wt.kizoku += 2;
+  }else wt.kizoku += 2;
   const keys = Object.keys(wt).filter(k=>wt[k] > 0);
   if(!keys.length){ f.plan = {type:'fukoku', since:S.year}; return; }
   const tot = keys.reduce((a,k)=>a+wt[k],0);
@@ -2395,7 +2400,7 @@ function simRivalActions(lines){
     rivalEndow(f);
     if(f.on) f.on = Math.abs(f.on) < 3 ? 0 : ri(f.on * 0.92);   // 恩義歲月漸淡
     if(f.intel && f.intel.n > 0 && Math.random() < 0.2) f.intel.n -= 1;   // 物見情報隨歲月過時
-    if(f.ltrust !== undefined && f.lord) f.ltrust = ri(f.ltrust + (60 - f.ltrust)*0.18);   // 主家無事,信心漸復
+    if(f.lord) f.ltrust = ri((f.ltrust ?? 60) + (60 - (f.ltrust ?? 60))*0.18);   // 主家無事,信心漸復
     // ── 家臣:延攬與老病(眾也在經營自己的人才) ──
     if(f.men){
       for(const m of f.men.slice()){
@@ -2470,7 +2475,11 @@ function simRivalActions(lines){
         f.money -= 150; f.prestige += 4;
         lines.push(`${fname(f)}獻金社寺、修橋鋪路——家格日隆(威望 +4)。`);
       }
-      if(f.lord && f.lord !== 'player' && S.lords[f.lord] && f.money >= 40){
+      if(f.lord === 'player' && f.money >= 40){
+        f.money -= 40; f.rel = clamp(f.rel+4,-100,100);
+        f.ltrust = clamp((f.ltrust ?? 60)+4, 0, 100);
+        if(Math.random() < 0.3) lines.push(`${fname(f)}遣使納貢於${S.famName}家,執禮甚恭(關係 +4・信心 +4)。`);
+      }else if(f.lord && f.lord !== 'player' && S.lords[f.lord] && f.money >= 40){
         f.money -= 40; f.koku += ri(f.koku*0.03);      // 厚結主家換得加增
         if(Math.random() < 0.25) lines.push(`${fname(f)}厚禮結納${LORD_META[f.lord].name}家,得其加增。`);
       }else if(!f.lord && f.money >= 60){
@@ -3707,7 +3716,7 @@ function simRivals(lines){
           choices:[
             {label:'坐視——各家自掃門前雪', sub:`${fname(tgt)}關係與信心俱挫`, fn:()=>{
               tgt.rel = clamp(tgt.rel-8,-100,100);
-              tgt.ltrust = clamp((tgt.ltrust!=null?tgt.ltrust:50)-6, 0, 100);
+              tgt.ltrust = clamp((tgt.ltrust ?? 60)-6, 0, 100);
               const r2 = skirmish(0);
               log(`${fname(agg)}與${fname(tgt)}戰於境上,${fname(r2.w)}得勝,奪地 ${r2.take} 石。${fname(tgt)}寒心(關係 -8)。`, r2.w===tgt?'':'bad');
             }},
@@ -3720,7 +3729,7 @@ function simRivals(lines){
               S.soldiers = armyTotal(S.army);
               if(r2.w === tgt){
                 tgt.rel = clamp(tgt.rel+10,-100,100);
-                tgt.ltrust = clamp((tgt.ltrust!=null?tgt.ltrust:50)+8, 0, 100);
+                tgt.ltrust = clamp((tgt.ltrust ?? 60)+8, 0, 100);
                 tgt.on = clamp((tgt.on||0)+ri(12*(1+skR('trade','honai')*0.2)), 0, 100);
                 addGrudge(agg, 'player', 18);
                 log(`與${fname(tgt)}合兵,大破${fname(agg)}於境上!折兵 ${myLoss},然${fname(tgt)}感恩戴德(關係 +10・恩義 +12)。`,'good');
@@ -3781,7 +3790,7 @@ function simRivals(lines){
               log(`裁斷偏向${fname(b)}——${fname(a)}表面領命,私下銜恨(關係 -12)。`,'bad');
             }},
             {label:'置之不問', sub:'任其自了——兩家皆疑主家之能', fn:()=>{
-              [a,b].forEach(f=>{ f.ltrust = clamp((f.ltrust!=null?f.ltrust:50)-6, 0, 100); });
+              [a,b].forEach(f=>{ f.ltrust = clamp((f.ltrust ?? 60)-6, 0, 100); });
               addGrudge(a, b.id, 12); addGrudge(b, a.id, 12);
               log(`主家不問,兩家私怨愈深——從屬眾皆疑${S.famName}家御下之能(信心俱降)。`,'bad');
             }}
@@ -5134,6 +5143,8 @@ function submitTo(key){
 }
 function breakAway(){
   const key = S.allegiance, M = LORD_META[key];
+  if(!key || !S.lords[key] || !M) return;   // 無主可絕——守門,免於空指
+
   if(hasKakun('chusetsu')) violateKakun('背主自立');
   S.allegiance = null;
   S.lords[key].favor = Math.min(S.lords[key].favor, 0) - 30;
@@ -5531,7 +5542,7 @@ function ksFoeVassalMood(s2){
   const odds = foeStr / myStr;   // 敵視角
   let sc = 0;
   if(odds > 1.25) sc += 1; else if(odds < 0.55) sc -= 2; else if(odds < 0.8) sc -= 1;
-  const lt = f && f.ltrust != null ? f.ltrust : 50;
+  const lt = (f && f.ltrust != null) ? f.ltrust : 60;
   if(lt >= 65) sc += 1; if(lt < 35) sc -= 1;
   if(f){ if(f.persona==='武斷'||f.persona==='海賊') sc += 1;
          if(f.persona==='保守'||f.persona==='商業') sc -= 1; }
@@ -5550,7 +5561,7 @@ function ksFoeVassalLeave(u, why, ev){
   u.s.broke = true; u.s.retired = true;
   KS.foe.forEach(o=>{ if(o !== u.s && !o.broke) o.mor = clamp(o.mor - (why==='chou'?8:6), 0, 140); });
   const f = (S && u.s.fvId) ? S.rivals.find(x=>x.id===u.s.fvId) : null;
-  if(f){ f.ltrust = clamp((f.ltrust!=null?f.ltrust:50) - (why==='chou'?10:5), 0, 100);
+  if(f){ f.ltrust = clamp((f.ltrust ?? 60) - (why==='chou'?10:5), 0, 100);
          if(why==='chou') f.rel = clamp((f.rel||0)+3, -100, 100); }
   ev.push(why==='chou'
     ? `🕯 內應發動——${u.s.name}臨陣抽身,不告而去!敵全軍動搖(敵士氣 -8)`
@@ -7352,7 +7363,7 @@ function ksHexRedraw(full){
 // P2 內應調略:開戰前遣使敵方與力備,成則其備戰中抽身(每戰限一次)
 function ksChouOdds(s2){
   const f = S.rivals.find(x=>x.id === s2.fvId);
-  const lt = f && f.ltrust != null ? f.ltrust : 50;
+  const lt = (f && f.ltrust != null) ? f.ltrust : 60;
   let p = 0.22 + (50-lt)*0.008 + ((f&&f.on)||0)*0.005 + ((f&&f.rel)||0)*0.002;
   if(f && f.persona === '商業') p += 0.12;                                   // 商人重利,有價即可談
   if(f && (f.persona==='保守' || f.persona==='親今川' || f.persona==='門徒')) p -= 0.08;   // 戀鄉/一途/唯信者難動
@@ -11038,11 +11049,12 @@ function openLord(key){
       S.money -= 20; L.favor = clamp(L.favor+8,-100,100);
       log(`向${M.name}家獻上音物,好感 ${L.favor}。`);
     }});
-    if(S.allegiance !== key && !S.isDaimyo){
-      choices.push({label:`請求臣從${M.name}家`, sub:`需好感 ≥20(現 ${L.favor})${S.allegiance ? `;背棄${LORD_META[S.allegiance].name}家,人質恐遭不測` : ''}`, fn:()=>{ submitTo(key); }});
-    }else{
+    if(S.allegiance === key){
+      // 唯有此家正是我主家,方有「絕緣」「謀反」可言
       choices.push({label:'絕緣自立', sub:`好感重挫;人質恐遭處刑;重獲自由之身(威望 +3)${hasKakun('chusetsu')?';⚠ 違背家訓':''}`, fn:()=>{ breakAway(); }});
       if(S.plotting) choices.push({label:'🗡 謀反決行(下克上)', sub:`${LORD_META[S.plotting.lord].name}家已允為內應——舉旗背反${M.name}家`, fn:()=>{ rebel(); }});
+    }else if(!S.isDaimyo){
+      choices.push({label:`請求臣從${M.name}家`, sub:`需好感 ≥20(現 ${L.favor})${S.allegiance ? `;背棄${LORD_META[S.allegiance].name}家,人質恐遭不測` : ''}`, fn:()=>{ submitTo(key); }});
     }
   }
   choices.push({label:'關閉', fn:()=>{}});
@@ -11224,12 +11236,19 @@ ${Object.keys(f.dev).map(k=>`　${FDEV_META[k].name}${f.dev[k]>1?'×'+f.dev[k]:'
       const p = clamp(0.20 + (f.rel-30)/160 + (ratio-1.5)*0.22 + (f.marr?0.2:0) + (f.pact?0.12:0)
         + (S.kani||0)*0.08 + (S.isDaimyo?0.15:0) + meiboHold() + playerAppeal(f) - (f.lord?0.25:0), 0.05, 0.9);   // 名分・名望・性向與大名之威
       const ok = ratio >= 1.5 && f.rel >= 30;
+      const kanyuOK = f._kanyuAt !== S.year;
+      const vCap = vassalCap(), vNow = myVassals().length;
       choices.push({label:'勧誘(50貫・所領安堵の誓紙)',
-        sub: ok ? `招其為${S.famName}家從屬(成算約 ${(p*100).toFixed(0)}%;${(DIPLO[f.persona]||{}).tag||'持平'}之家 ${playerAppeal(f)>=0?'+':''}${ri(playerAppeal(f)*100)}%)${f.lord?`;必觸怒${LORD_META[f.lord].name}家`:''}`
+        sub: !kanyuOK ? '今年已遣使勸過——事不過三,且待來年'
+           : vNow >= vCap ? `⚠ 名分所及,只安堵得起 ${vCap} 家(現 ${vNow} 家);須先晉官位、積威望`
+           : ok ? `招其為${S.famName}家從屬(成算約 ${(p*100).toFixed(0)}%;${(DIPLO[f.persona]||{}).tag||'持平'}之家 ${playerAppeal(f)>=0?'+':''}${ri(playerAppeal(f)*100)}%)${f.lord?`;必觸怒${LORD_META[f.lord].name}家`:''}`
                 : `需家格 ≥1.5倍(現 ${ratio.toFixed(2)})且關係 ≥30(現 ${f.rel})`,
         fn:()=>{
+          if(f._kanyuAt === S.year){ log(`${fname(f)}今年已回絕過一次,再遣使徒惹人厭。`,'bad'); return; }
+          if(myVassals().length >= vassalCap()){ log(`從屬已 ${vNow} 家——名分所及,安堵不起更多(上限 ${vCap} 家)。`,'bad'); return; }
           if(!ok){ log('條件未足,勧誘之議難以啟齒。','bad'); return; }
           if(S.money < 50){ log('資金不足,備不起誓紙禮金。','bad'); return; }
+          f._kanyuAt = S.year;
           S.money -= 50;
           if(Math.random() < p){
             const old = f.lord;
@@ -11248,15 +11267,22 @@ ${Object.keys(f.dev).map(k=>`　${FDEV_META[k].name}${f.dev[k]>1?'×'+f.dev[k]:'
     }
     // 從屬眾管理
     if(f.lord === 'player'){
-      choices.push({label:'所領安堵(20貫)', sub:'重申保障其所領:關係 +12', fn:()=>{
+      const andoOK = f._andoAt !== S.year, kaekiOK = f._kaekiAt !== S.year;
+      choices.push({label:`所領安堵(20貫)${andoOK?'':'(今年已行)'}`, sub: andoOK ? '重申保障其所領:關係 +12、信心 +6(一年一度)' : '安堵之狀一年一通,再頒則輕', fn:()=>{
+        if(f._andoAt === S.year){ log(`${fname(f)}今年已受安堵之狀——一紙再頒,反而輕賤。`,'bad'); return; }
         if(S.money < 20){ log('資金不足。','bad'); return; }
-        S.money -= 20; f.rel = clamp(f.rel+12,-100,100);
-        log(`重申${fname(f)}所領安堵,其心大安。`,'good');
+        S.money -= 20; f._andoAt = S.year;
+        f.rel = clamp(f.rel+12,-100,100);
+        f.ltrust = clamp((f.ltrust ?? 60)+6, 0, 100);
+        log(`重申${fname(f)}所領安堵,其心大安(關係 +12・信心 +6)。`,'good');
       }});
-      choices.push({label:'課役(徵調錢糧)', sub:`米 +${ri(f.koku*0.05)}、錢 +${ri(f.koku*0.02)};關係 -12${hasKakun('minpon')?';⚠ 違背家訓':''}`, fn:()=>{
+      choices.push({label:`課役(徵調錢糧)${kaekiOK?'':'(今年已課)'}`, sub: kaekiOK ? `米 +${ri(f.koku*0.05)}、錢 +${ri(f.koku*0.02)};關係 -12、信心 -8(一年一度)${hasKakun('minpon')?';⚠ 違背家訓':''}` : '一年已課其役,再課則怨聲載道', fn:()=>{
+        if(f._kaekiAt === S.year){ log(`${fname(f)}今年已課過役——再課,便是竭澤而漁。`,'bad'); return; }
+        f._kaekiAt = S.year;
         S.rice += ri(f.koku*0.05); S.money += ri(f.koku*0.02);
         f.rel = clamp(f.rel-12,-100,100);
-        log(`向${fname(f)}課以額外軍役錢糧——怨言難免(關係 -12)。`);
+        f.ltrust = clamp((f.ltrust ?? 60)-8, 0, 100);
+        log(`向${fname(f)}課以額外軍役錢糧——怨言難免(關係 -12・信心 -8)。`);
         if(hasKakun('minpon')) violateKakun('橫徵暴斂於從屬');
       }});
       choices.push({label:'放歸自立', sub:'解除從屬關係,關係 +5', fn:()=>{
