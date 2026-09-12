@@ -572,7 +572,7 @@
 
 <script>
 'use strict';
-const BUILD = 'bg1';
+const BUILD = 'bd1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -745,7 +745,7 @@ function newState(famName, kamon, clan, mode, region, scen){
     kani:0, kaniName:null, isDaimyo:false, daimyoSince:null,
     army:{ashigaru:0, yumi:0, kiba:0, teppo:0}, drillType:'ashigaru', siege:null,
     rivals: makeRivals(),
-    lords:{ imagawa:{demesne:4000, favor:0}, oda:{demesne:2400, favor:0},
+    lords:{ imagawa:{demesne:4000, favor:0, bidate:0}, oda:{demesne:2400, favor:0, bidate:0},
             saito:{demesne:2200, favor:0}, takeda:{demesne:2600, favor:0},
             nagao:{demesne:2800, favor:0} },
     allegiance:null, hostage:null, warCd:4,
@@ -1423,6 +1423,9 @@ function migrate(s){
         s.rivals.push(nf);
       }
     }
+  }
+  { // 備立:舊檔補欄位
+    for(const k in (s.lords||{})) if(s.lords[k] && s.lords[k].bidate == null) s.lords[k].bidate = 0;
   }
   { // 武藝樹:舊檔補欄位
     if(s.bugei == null) s.bugei = 0;
@@ -3159,14 +3162,18 @@ function simLordFeuds(lines){
     lines.push(`⚔【境目相論】${LORD_META[a].name}家與${LORD_META[b].name}家因境目寸土相爭,兵戈已起!`);
     startCampaign(S.allegiance, enemy, '境目の合戰');
   }else{
-    const pA = lordPower(a) * (1 - (S.lords[a].wounds||0));
-    const pB = lordPower(b) * (1 - (S.lords[b].wounds||0));       // 創重者力不從心
+    const pA = lordPower(a) * (1 - (S.lords[a].wounds||0)) * lordBidateMul(a);
+    const pB = lordPower(b) * (1 - (S.lords[b].wounds||0)) * lordBidateMul(b);   // 創重者力不從心;備立精者以寡敵眾
     const w = Math.random() < pA/(pA+pB) ? a : b, l = w === a ? b : a;
     warAftermath(w, l);
     lines.push(`⚔【境目相論】${LORD_META[a].name}家與${LORD_META[b].name}家戰於境上——${LORD_META[w].name}方得勝,奪地百五十石。`);
   }
 }
 // 大名の智:調略對象評分——利之所在、心之所向、繫之鬆緊,三者相乘
+// 備立:大名的軍事成長軸——與玩家的武藝樹對稱。只入戰力,不入國力(國力仍以土地為本)
+const LORD_BIDATE_CAP = 12;
+function lordBidate(key){ const L = S.lords && S.lords[key]; return L ? (L.bidate||0) : 0; }
+const lordBidateMul = key => 1 + lordBidate(key) * 0.02;    // 滿級 1.24,與玩家滿樹之效相當
 function lordChouTarget(key){
   const reach = lordReach(key);
   const myPow = Math.max(1, lordPower(key));
@@ -3217,6 +3224,14 @@ function simLords(lines){
       const g = doBu ? v.bu * 0.12 * (0.7 + Math.random()*0.6)
                      : v.nai * 0.28 * (0.7 + Math.random()*0.6) * (L.demesne > 8000 ? 0.4 : 1);
       if(doBu && L.wounds) L.wounds = Math.max(0, L.wounds - 0.025);   // 整備兵農:收攏潰卒,戰創漸復
+      if(doBu){                                                         // 備立:操練不輟,其軍日精
+        L._bidate = (L._bidate || 0) + v.bu * (0.7 + Math.random()*0.6) * 0.55;
+        if(L._bidate >= 100 && (L.bidate||0) < LORD_BIDATE_CAP){
+          L._bidate -= 100; L.bidate = (L.bidate||0) + 1;
+          if(Math.random() < 0.45)
+            lines.push(`${LORD_META[key].name}家整軍經武有成——備立 ${L.bidate} 級,其軍愈精。`);
+        }
+      }
       grow += g;
       if(g > bestV){ bestV = g; best = {v, act: doBu ? '整備兵農' : '督導檢地開墾'}; }
     }
@@ -5965,7 +5980,7 @@ function ksLevySync(sonae){
 // ── 敵方備(重臣親自領軍) ──
 function ksProposeFoe(key){
   const roster = lordRoster(key);
-  const total = Math.max(40, ri(lordPower(key) * 3.4 * (1 - (S.lords[key] && S.lords[key].wounds || 0))));
+  const total = Math.max(40, ri(lordPower(key) * 3.4 * (1 - (S.lords[key] && S.lords[key].wounds || 0)) * lordBidateMul(key)));
   // 各備兵力依知行——家老率大備,部將率小備(封建的軍役本質:知行多者出兵多)
   const gens = roster.slice().sort((a,b)=>(RANK_SHARE[b.rank]||0.05)-(RANK_SHARE[a.rank]||0.05)).slice(0,4);
   if(!gens.length) gens.push({n:`${LORD_META[key].name}家中老`, bu:60, nai:55, chi:55, rank:'busho'});
@@ -8259,13 +8274,13 @@ function daimyoWar(targetKey, playerAttacks){
   const T = LORD_META[targetKey];
   if(!T || !S.lords[targetKey] || S.gameOver || !S.retainers.length) return;
   const mine = S.soldiers + myVassals().reduce((a,x)=>a + ri(rSol(x)*0.8), 0);
-  const theirs = Math.max(40, ri(lordPower(targetKey) * 3.4 * (1 - (S.lords[targetKey].wounds || 0))));
+  const theirs = Math.max(40, ri(lordPower(targetKey) * 3.4 * (1 - (S.lords[targetKey].wounds || 0)) * lordBidateMul(targetKey)));
   const body = playerAttacks
     ? `對${T.name}家用兵!
 
 我方可動員 ${S.soldiers} 兵(從屬眾與力至多 ${mine - S.soldiers})
 `+
-      `${T.name}家國力 ${lordPower(targetKey)},可出兵約 ${theirs}
+      `${T.name}家國力 ${lordPower(targetKey)}${lordBidate(targetKey)>=3?`・備立 ${lordBidate(targetKey)} 級(其軍精練 ×${lordBidateMul(targetKey).toFixed(2)})`:''},可出兵約 ${theirs}
 重臣:${lordRoster(targetKey).map(v=>v.n).join('、') || '——'}
 
 `+
@@ -8370,7 +8385,7 @@ function rebel(){
   const hero = topBu();
   const support = myVassals().reduce((a,x)=>a + rSol(x)*0.5, 0);
   const pp = (S.soldiers + support) * (1 + hero.bu/100) * 1.6 * (1 + (S.fort||0)*0.08) * 1.5;  // 內應之利
-  const ep = lordPower(lordKey) * 5 * (1 - (S.lords[lordKey].wounds || 0));
+  const ep = lordPower(lordKey) * 5 * (1 - (S.lords[lordKey].wounds || 0)) * lordBidateMul(lordKey);
   const winP = clamp(pp/(pp+ep), 0.05, 0.9);
   queueModal({title:'謀反決行——下克上',
     body:`${AM.name}家已允為內應。\n舉旗背反${M.name}家,勝則裂土稱雄,敗則身死族滅。\n\n我方 ${S.soldiers} 兵${support?`(與力 ${ri(support)})`:''}${S.fort?`、城砦 ${S.fort} 級`:''}\n勝算約 ${(winP*100).toFixed(0)}%`,
@@ -8417,7 +8432,7 @@ function punitiveWar(lordKey){
   const hero = topBu();
   const support = myVassals().reduce((a,x)=>a + rSol(x)*0.5, 0);
   const pp = (S.soldiers + support) * (1 + hero.bu/100) * 1.6 * (1 + (S.fort||0)*0.08);   // 籠城之利+城砦+與力
-  const ep = lordPower(lordKey) * 6 * (1 - (S.lords[lordKey].wounds || 0));
+  const ep = lordPower(lordKey) * 6 * (1 - (S.lords[lordKey].wounds || 0)) * lordBidateMul(lordKey);
   const winP = clamp(pp/(pp+ep), 0.03, 0.9);
   queueModal({
     title:`${M.name}家來攻!`,
@@ -11469,7 +11484,7 @@ function renderLords(){
       continue;
     }
     const vassals = S.rivals.filter(f=>f.alive && f.lord===key);
-    h += `<div class="rivalRow tap" data-lord="${key}"><b>${M.name}家${L.submitted?'<span style="color:var(--accent)">・臣服</span>':''}</b><span class="rsub">國力 ${lordPower(key)}(直轄${L.demesne}石+從屬${vassals.length + (S.allegiance===key?1:0)}家)${(L.wounds||0)>=0.05?`<span style="color:var(--bad)">・戰創 -${ri(L.wounds*100)}%</span>`:''}</span>`+
+    h += `<div class="rivalRow tap" data-lord="${key}"><b>${M.name}家${L.submitted?'<span style="color:var(--accent)">・臣服</span>':''}</b><span class="rsub">國力 ${lordPower(key)}(直轄${L.demesne}石+從屬${vassals.length + (S.allegiance===key?1:0)}家)${(L.wounds||0)>=0.05?`<span style="color:var(--bad)">・戰創 -${ri(L.wounds*100)}%</span>`:''}${lordBidate(key)>=3?`<span style="color:var(--accent2)">・備立 ${lordBidate(key)}(戰力 ×${lordBidateMul(key).toFixed(2)})</span>`:''}</span>`+
          `<span class="${L.favor<0?'loyLow':''}">好感 ${L.favor}${S.allegiance===key?'・<b>臣從中</b>':''}</span></div>`;
   }
   $('lordBox').innerHTML = h;
