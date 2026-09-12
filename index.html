@@ -540,7 +540,7 @@
 
 <script>
 'use strict';
-const BUILD = 'p2a';
+const BUILD = 'p2b';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1453,6 +1453,7 @@ function rivalEndow(f){
     f.menSeeded = 1;
   }
   if(f.ltrust == null) f.ltrust = 60;   // 對主家的信心:基準六分(新局與舊檔一併補齊)
+  if(f._sit !== undefined){ delete f._sit; delete f._sitAt; }   // 壞版本殘留的循環參照,見即清除
   f.money  = f.money  ?? ri(f.koku * (f.clanKind==='merchant' ? 0.35 : f.clanKind==='suigun' ? 0.22 : 0.12));
   f.sol    = f.sol    ?? ri(f.koku * 0.08);
   f.fort   = f.fort   ?? (f.persona==='武斷' ? 1 : 0);
@@ -2220,9 +2221,11 @@ function planLabel(f){
   return p.name;
 }
 // ══════════ 眾の智:局勢評估(一家之眼所見的天下)——評定與派工共用,每季快取一次 ══════════
+let _rSitCache = new Map();   // 局勢快取置於存檔之外——存進 S 會使鄰家物件互指而無法序列化
 function rSituation(f){
   const stamp = S.year*4 + S.season;
-  if(f._sitAt === stamp && f._sit) return f._sit;
+  const c = _rSitCache.get(f.id);
+  if(c && c.stamp === stamp && c.owner === S) return c.sit;
   const nb = neighborsOf(f).filter(x=>x.alive);
   const myDef = Math.max(1, rDefense(f));
   let threat = 0, threatOf = null, prey = null, preyV = 0, aim = null, aimV = 0;
@@ -2246,7 +2249,8 @@ function rSituation(f){
     growRoom: clamp(1 - f.koku / rivalKokuCap(), 0, 1),
     cash: (f.money||0) / Math.max(60, f.koku*0.25),
     solRatio: clamp(rSol(f) / Math.max(1, f.koku*0.16), 0, 2) };
-  f._sit = sit; f._sitAt = stamp;
+  if(_rSitCache.size > 400) _rSitCache.clear();
+  _rSitCache.set(f.id, {stamp, owner:S, sit});
   return sit;
 }
 const R_NERVE = f => (f.persona==='武斷'||f.persona==='海賊') ? 1.08
