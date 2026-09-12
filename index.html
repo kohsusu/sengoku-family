@@ -80,7 +80,15 @@
   #topbar .warn{color:#ff9b8a;font-weight:bold}
   main{display:flex;flex-wrap:wrap;gap:12px;padding:12px;align-items:flex-start}
   #mapWrap{flex:1 1 560px;min-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
-  #map{width:100%;height:auto;display:block;border-radius:6px}
+  #mapStage{position:relative}
+  #map{width:100%;height:auto;display:block;border-radius:6px;
+    cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+  #map.dragging{cursor:grabbing}
+  #btnHome{position:absolute;left:10px;bottom:10px;font:600 12px/1 "Noto Serif TC","PMingLiU",serif;
+    color:#4a3c26;background:rgba(238,228,203,.93);border:1px solid rgba(122,111,84,.7);
+    border-radius:4px;padding:7px 11px;cursor:pointer;letter-spacing:.05em}
+  #btnHome:hover{background:#f3ead0}
+  #btnHome:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   #mapCap{font-size:12px;color:var(--ink2);text-align:center;padding-top:6px;line-height:1.7}
   #mapLegend{display:flex;flex-wrap:wrap;align-items:center;gap:5px 16px;
     padding:10px 2px 0;font-size:12px;color:var(--ink2);justify-content:center}
@@ -499,7 +507,10 @@
   <header id="topbar"></header>
   <main>
     <div id="mapWrap">
-      <canvas id="map" width="900" height="560"></canvas>
+      <div id="mapStage">
+        <canvas id="map" width="900" height="560"></canvas>
+        <button id="btnHome" type="button" title="把視窗移回自家本據">◎ 本據</button>
+      </div>
       <div id="mapLegend"></div>
       <div id="mapCap"></div>
       <details id="intelWrap">
@@ -582,7 +593,7 @@
 
 <script>
 'use strict';
-const BUILD = 'wa1';
+const BUILD = 'w1a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -11288,6 +11299,7 @@ function render(){
       (top ? `近國最大者:${fname(top)} ${top.koku} 石。` : '');
   }
   if($('resMeibo')) $('resMeibo').onclick = openMeibo;
+  bindMapPan();
   drawMap();
 }
 // 名望之效——把散落各處的威望作用集中說明
@@ -12185,29 +12197,41 @@ function inflSig(){
 }
 function drawInfluence(c){
   if(!S.rivals) return;
-  const sig = inflSig();
+  const cam = mapCam();
+  // 視窗以 64px 為格對齊——小幅平移仍打得中快取,不必每一幀重算
+  const vx = Math.floor((cam.x - 140) / 64) * 64, vy = Math.floor((cam.y - 140) / 64) * 64;
+  const sig = inflSig() + '|' + vx + ',' + vy;
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
   if(_inflCache && _inflCache.sig === sig && _inflCache.dpr === dpr){
-    c.save(); c.setTransform(1,0,0,1,0,0);
-    c.drawImage(_inflCache.cv, 0, 0);
-    c.restore();
+    c.drawImage(_inflCache.cv, _inflCache.vx, _inflCache.vy, MAP_W + 280, MAP_H + 280);
     return;
   }
+  // 只畫視窗加一圈邊界。世界有 1400×1280,整片全算是白費八成的功
+  const RW = MAP_W + 280, RH = MAP_H + 280;
   const lay = document.createElement('canvas');
-  lay.width = Math.round(MAP_W*dpr); lay.height = Math.round(MAP_H*dpr);
+  lay.width = Math.round(RW*dpr); lay.height = Math.round(RH*dpr);
   const lc = lay.getContext('2d');
   lc.setTransform(dpr, 0, 0, dpr, 0, 0);
-  _drawInfluenceRaw(lc);
-  _inflCache = {sig, dpr, cv:lay};
-  c.save(); c.setTransform(1,0,0,1,0,0);
-  c.drawImage(lay, 0, 0);
-  c.restore();
+  lc.translate(-vx, -vy);
+  _drawInfluenceRaw(lc, {x0:vx, y0:vy, x1:vx+RW, y1:vy+RH});
+  _inflCache = {sig, dpr, cv:lay, vx, vy};
+  c.drawImage(lay, vx, vy, RW, RH);
 }
-function _drawInfluenceRaw(c){
+const _NZ_N = 32;
+const _NZ = (() => {                       // 低頻雜訊表:一次建好,四處重用
+  const a = new Float32Array(_NZ_N * _NZ_N), r = mulberry32(1545);
+  for(let i = 0; i < a.length; i++) a[i] = r();
+  return a;
+})();
+function _drawInfluenceRaw(c, R){
   if(!S.rivals) return;
   // 全圖劃分:每一寸土地依「居城位置×石高」歸於某家——大名直轄亦為源點,無主之境盡屬最近之家
   // 網格 5→3:淡彩加濃之後,5px 的量化階梯在邊界上看得一清二楚(墨線描的正是那道階梯)
-  const CELL = 3, X0 = 20, X1 = 880, Y0 = 26, Y1 = 560, CUT = 0.02;
+  R = R || {x0:20, y0:26, x1:880, y1:560};
+  // CUT 0.02 是為舊圖 900×560 訂的,一個五千石大名的影響及於 3857px——在那張圖上
+  // 從不觸頂,擴圖後卻把整個畿內染成美濃的顏色。提到 0.18:大名及 389px(約百餘里)、
+  // 五百石之眾及 79px。舊圖夠密,覆蓋率仍是 100%,故那邊的觀感一絲不動。
+  const CELL = 3, X0 = R.x0, X1 = R.x1, Y0 = R.y0, Y1 = R.y1, CUT = 0.18;
   const NEUTRAL = '#878881';                      // 無主:利休鼠——彩度刻意最低,「無主」本就不該搶眼
   const act = S.rivals.filter(f=>f.alive).map(f=>({
     x:f.x, y:f.y, w:Math.sqrt(Math.max(1, f.koku)),
@@ -12241,13 +12265,38 @@ function _drawInfluenceRaw(c){
         col: L.submitted ? LORDC.player : (LORDC[key] || NEUTRAL)});
     }
   }
+  { // 源點剪枝:v = w/(d+45) 隨距離單調遞減。一個源點在此範圍內的最大可能值
+    // (取最近處)若仍低於某家在此範圍內的最小保證值(取最遠角),它在這片土地上
+    // 絕無勝算——扔掉。世界一大,遠方的家佔了絕大多數。
+    const near = a => { const dx = a.x < X0 ? X0-a.x : a.x > X1 ? a.x-X1 : 0,
+                              dy = a.y < Y0 ? Y0-a.y : a.y > Y1 ? a.y-Y1 : 0;
+                        return Math.sqrt(dx*dx + dy*dy); };
+    const far = a => Math.max(Math.hypot(a.x-X0, a.y-Y0), Math.hypot(a.x-X1, a.y-Y0),
+                              Math.hypot(a.x-X0, a.y-Y1), Math.hypot(a.x-X1, a.y-Y1));
+    let floor = CUT;                     // 連 CUT 都達不到的,更不必算
+    for(const a of act) floor = Math.max(floor, a.w / (far(a) + 45));
+    const keep = act.filter(a => a.w / (near(a) + 45) >= floor);
+    if(keep.length){ act.length = 0; act.push.apply(act, keep); }
+  }
   const NX = Math.ceil((X1-X0)/CELL), NY = Math.ceil((Y1-Y0)/CELL);
   const win = new Int16Array(NX*NY).fill(-1);
   // 加權 Voronoi 是每格對每個源點求一次距離。網格加密到 3px 後,直算是 150 萬次,
   // 手機上一季一頓。改為粗算再細修:先以 4 倍粗網格定局,內部大片同屬者直接繼承,
   // 只有粗格鄰里意見不合處(即邊界一帶)才逐格精算——省下八成的功。
+  // 兵鋒所及的盡頭若用固定閾值,邊緣就是一道圓規畫出來的弧。
+  // 摻一層低頻值雜訊(約 120px 一起伏,±20%),讓它像山川人事所限,而非幾何。
+  // 雜湊每格算四次太貴(重算從 83ms 漲到 124ms),故預先建表,之後只查表內插。
+  const nz = (x, y) => {
+    const g = 120, NT = _NZ_N;
+    const gx = Math.floor(x/g), gy = Math.floor(y/g), fx = x/g - gx, fy = y/g - gy;
+    const ax = ((gx % NT) + NT) % NT, ay = ((gy % NT) + NT) % NT;
+    const bx = (ax + 1) % NT, by = (ay + 1) % NT;
+    const u = fx*fx*(3-2*fx), v = fy*fy*(3-2*fy);
+    return (_NZ[ay*NT+ax]*(1-u) + _NZ[ay*NT+bx]*u)*(1-v)
+         + (_NZ[by*NT+ax]*(1-u) + _NZ[by*NT+bx]*u)*v;
+  };
   const owner = (cx, cy) => {
-    let bi = -1, bw = CUT;
+    let bi = -1, bw = CUT * (0.80 + 0.40 * nz(cx, cy));
     for(let k=0; k<act.length; k++){
       const a = act[k];
       const dx = a.x-cx, dy = a.y-cy;            // Math.hypot 在這條內圈裡貴得離譜
@@ -12311,9 +12360,10 @@ function _drawInfluenceRaw(c){
       const d = iy+1 < NY ? win[ix*NY+iy+1] : -1;
       const campOf = i => i < 0 ? null : act[i].camp;
       const diffCamp = (a,b)=> campOf(a) !== campOf(b);
-      if(k !== r && (diffCamp(k,r) === thick)){
+      // 對著無主之地的那一側不描界——兵鋒所及的盡頭不是國界,讓淡彩自己淡出去
+      if(k >= 0 && r >= 0 && k !== r && (diffCamp(k,r) === thick)){
         c.moveTo(X0+(ix+1)*CELL, Y0+iy*CELL); c.lineTo(X0+(ix+1)*CELL, Y0+(iy+1)*CELL); }
-      if(k !== d && (diffCamp(k,d) === thick)){
+      if(k >= 0 && d >= 0 && k !== d && (diffCamp(k,d) === thick)){
         c.moveTo(X0+ix*CELL, Y0+(iy+1)*CELL); c.lineTo(X0+(ix+1)*CELL, Y0+(iy+1)*CELL); }
     }
     c.stroke();
@@ -12345,7 +12395,73 @@ function renderMapLegend(){
   h += `<span class="lgIt"><i class="lgRing"></i>自家從屬</span>`;
   box.innerHTML = h;
 }
-const MAP_W = 900, MAP_H = 560;
+const MAP_W = 900, MAP_H = 560;                 // 視窗(畫布)大小——不變,變的是它成了一扇窗
+// ── 世界 ────────────────────────────────────────────────
+// 第一期擴圖:西達攝津・播磨,北抵能登禄剛崎,南及紀伊潮岬。
+// **原點刻意不動**——西與北只是負座標,舊存檔的 x,y 一個都不必改;
+// 比例尺(327 px/度)也不動,故 pdist / NEIGHBOR_R / inStrikeRange 等
+// 以像素為單位的距離門檻,原封不動仍然成立。
+const WORLD = {x0:-500, y0:-340, x1:900, y1:940};      // 1400 × 1280,現圖的 3.6 倍
+// 第一期新入之十七國(名・位・當代領有者)
+const NEW_PROV = [
+  ['能登', 212,-238,'畠山家'], ['越中', 300,-132,'神保・椎名'], ['加賀',  96, -66,'一向一揆'],
+  ['越前',-104,  92,'朝倉家'], ['若狹',-214, 244,'武田(若狹)'], ['飛驒', 268,  -6,'姉小路家'],
+  ['近江', -78, 262,'六角・淺井'], ['丹波',-320, 366,'波多野家'], ['山城',-214, 404,'足利將軍家'],
+  ['攝津',-318, 494,'細川・三好'], ['河内',-260, 556,'畠山家'], ['和泉',-320, 596,'細川家'],
+  ['大和',-176, 540,'筒井・興福寺'], ['伊賀', -92, 490,'惣國一揆'], ['伊勢',  36, 476,'北畠家'],
+  ['志摩', 168, 640,'九鬼家'], ['紀伊',-250, 700,'畠山・雜賀'], ['播磨',-452, 480,'赤松家'],
+  ['丹後',-372, 330,'一色家']
+];
+const camClampX = x => Math.max(WORLD.x0, Math.min(WORLD.x1 - MAP_W, x));
+const camClampY = y => Math.max(WORLD.y0, Math.min(WORLD.y1 - MAP_H, y));
+function mapCam(){
+  if(!S) return {x:0, y:0};
+  if(!S.cam || !isFinite(S.cam.x) || !isFinite(S.cam.y)){
+    const p = playerPos();
+    S.cam = {x: camClampX(p.x - MAP_W/2), y: camClampY(p.y - MAP_H/2)};
+  }
+  S.cam.x = camClampX(S.cam.x); S.cam.y = camClampY(S.cam.y);
+  return S.cam;
+}
+function camTo(x, y){ const c = mapCam(); c.x = camClampX(x); c.y = camClampY(y); drawMap(); }
+function camBy(dx, dy){ const c = mapCam(); camTo(c.x + dx, c.y + dy); }
+function camHome(){ const p = playerPos(); camTo(p.x - MAP_W/2, p.y - MAP_H/2); }
+// 拖曳平移:畫布經 CSS 縮放過,故螢幕位移須換算回世界單位
+function bindMapPan(){
+  const cv = $('map'); if(!cv || cv._panned) return;
+  cv._panned = true;
+  let on = false, id = null, lx = 0, ly = 0;
+  const k = () => MAP_W / (cv.getBoundingClientRect().width || MAP_W);
+  cv.addEventListener('pointerdown', e => {
+    if(!S) return;
+    on = true; id = e.pointerId; lx = e.clientX; ly = e.clientY;
+    cv.classList.add('dragging');
+    try{ cv.setPointerCapture(id); }catch(_){}
+  });
+  cv.addEventListener('pointermove', e => {
+    if(!on || e.pointerId !== id) return;
+    const f = k(), dx = (e.clientX - lx) * f, dy = (e.clientY - ly) * f;
+    lx = e.clientX; ly = e.clientY;
+    if(dx || dy) camBy(-dx, -dy);
+    e.preventDefault();
+  });
+  const up = () => {
+    if(!on) return;
+    on = false; cv.classList.remove('dragging');
+    try{ cv.releasePointerCapture(id); }catch(_){}
+  };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+  cv.addEventListener('keydown', e => {
+    const step = e.shiftKey ? 240 : 90;
+    const M = {ArrowLeft:[-step,0], ArrowRight:[step,0], ArrowUp:[0,-step], ArrowDown:[0,step]};
+    if(M[e.key]){ camBy(M[e.key][0], M[e.key][1]); e.preventDefault(); }
+    else if(e.key === 'Home'){ camHome(); e.preventDefault(); }
+  });
+  cv.tabIndex = 0;
+  const hb = $('btnHome');
+  if(hb) hb.onclick = () => camHome();
+}
 // ── 標籤避讓 ──────────────────────────────────────────────
 // 圖上五十餘個文字物件全部寫死在「圓的右側」,二十一家並立時必然疊字
 // (菅沼壓三河國名、小笠原與諏訪相黏、玩家石高與鄰家疊成讀不出的東西)。
@@ -12357,7 +12473,12 @@ function lbAdd(it){ _lb.item.push(it); }
 function lbRun(c){
   const hit = (a,b)=> !(a.x2 < b.x1 || b.x2 < a.x1 || a.y2 < b.y1 || b.y2 < a.y1);
   const OFF = [[1,0],[-1,0],[0,-1],[0,1],[1,-1],[-1,-1],[1,1],[-1,1]];
+  const cam = mapCam();
+  const VX0 = cam.x + 3, VX1 = cam.x + MAP_W - 3, VY0 = cam.y + 3, VY1 = cam.y + MAP_H - 3;
   let drawn = 0;
+  // 窗外之家連算都不必算——世界大了三倍多,不剔除的話八成的功都白做
+  _lb.item = _lb.item.filter(it => it.x > VX0 - 90 && it.x < VX1 + 90
+                                && it.y > VY0 - 40 && it.y < VY1 + 40);
   _lb.item.sort((p,q)=> p.pri - q.pri);
   c.lineJoin = 'round';
   for(const it of _lb.item){
@@ -12371,7 +12492,7 @@ function lbRun(c){
                  : it.x - w/2;
         const ay = it.y + dy*(it.r + h*0.95) + h*0.36;
         const b = {x1:ax-2, y1:ay-h, x2:ax+w+2, y2:ay+3};
-        if(b.x1 < 3 || b.x2 > MAP_W-3 || b.y1 < 3 || b.y2 > MAP_H-3) continue;
+        if(b.x1 < VX0 || b.x2 > VX1 || b.y1 < VY0 || b.y2 > VY1) continue;
         if(_lb.box.some(q=>hit(b,q))) continue;
         got = {txt, ax, ay, b}; break;
       }
@@ -12395,13 +12516,33 @@ function drawMap(){
   if(cv.width !== want){ cv.width = want; cv.height = Math.round(MAP_H*dpr); }
   const c = cv.getContext('2d');
   c.setTransform(dpr, 0, 0, dpr, 0, 0);           // 之後全照 900×560 邏輯座標畫
-  const W = MAP_W, H = MAP_H;
+  const W = WORLD.x1, H = MAP_H;          // W 仍是陸地東緣(世界右界),海岸線據此收邊
+  const cam = mapCam();
+  c.save();
+  c.translate(-cam.x, -cam.y);             // 以下全以世界座標作畫
   // 海:整面壓暗(原本鋪滿的青海波磚,把海拉到與陸同明度,全圖遂無最暗處)
   c.fillStyle = MAP_SEA;
-  c.fillRect(0,0,W,H);
+  c.fillRect(WORLD.x0, WORLD.y0, WORLD.x1 - WORLD.x0, WORLD.y1 - WORLD.y0);
   // 陸地(擬真海岸線:伊勢灣・知多/渥美半島・三河灣・濱名湖口・駿河灣・伊豆半島)
   const landTrace = (ctx)=>{
-    ctx.moveTo(0,0); ctx.lineTo(W,0);
+    // 北岸・日本海(但馬→丹後→若狹→越前→加賀→能登→越中→越後)
+    // 座標皆由真實經緯經同一套變換換算,再套接縫位移 (-43,+128)
+    ctx.moveTo(WORLD.x0, 256);                                    // 但馬(西切邊)
+    ctx.quadraticCurveTo(-430, 292, -351, 299);                   // 丹後・舞鶴
+    ctx.quadraticCurveTo(-290, 305, -225, 293);                   // 若狹・小浜
+    ctx.quadraticCurveTo(-165, 282, -113, 247);                   // 敦賀灣
+    ctx.quadraticCurveTo(-152, 198, -152, 143);                   // 越前岬
+    ctx.quadraticCurveTo(-128,  98,  -85,  73);                   // 三國湊
+    ctx.quadraticCurveTo(  10,  22,   83, -40);                   // 加賀・金澤
+    ctx.quadraticCurveTo( 122, -84,  135,-131);                   // 羽咋
+    ctx.quadraticCurveTo( 152,-216,  177,-284);                   // 能登西岸・輪島
+    ctx.quadraticCurveTo( 252,-342,  327,-326);                   // 禄剛崎(能登突端)
+    ctx.quadraticCurveTo( 272,-262,  201,-180);                   // 七尾灣
+    ctx.quadraticCurveTo( 194,-142,  208,-119);                   // 氷見
+    ctx.quadraticCurveTo( 246, -94,  285, -73);                   // 富山灣頭
+    ctx.quadraticCurveTo( 400,-118,  509,-149);                   // 越中東岸・親不知
+    ctx.quadraticCurveTo( 580,-190,  649,-220);                   // 直江津
+    ctx.quadraticCurveTo( 780,-262,    W,-300);                   // 越後(東切邊)
     ctx.lineTo(W,392);                                            // 相模灘東端
     ctx.quadraticCurveTo(862,400,836,414);                        // 相模灣岸
     ctx.quadraticCurveTo(828,452,816,502);                        // 伊豆東岸
@@ -12427,12 +12568,30 @@ function drawMap(){
     ctx.quadraticCurveTo(236,428,222,412);                        // 知多根本
     ctx.quadraticCurveTo(208,404,190,408);                        // 伊勢灣頭(熱田沖)
     ctx.quadraticCurveTo(130,424,64,444);                         // 伊勢灣北岸
-    ctx.lineTo(0,456);
+    // 南岸・太平洋續向西(伊勢→志摩→熊野灘→紀伊→紀伊水道→大坂灣→播磨)
+    ctx.quadraticCurveTo(  60, 490,   41, 531);                   // 伊勢灣西岸・津
+    ctx.quadraticCurveTo(  40, 560,   48, 577);                   // 松阪
+    ctx.quadraticCurveTo(  86, 596,  110, 601);                   // 伊勢
+    ctx.quadraticCurveTo( 140, 605,  156, 604);                   // 鳥羽
+    ctx.quadraticCurveTo( 182, 628,  177, 665);                   // 志摩・大王崎
+    ctx.quadraticCurveTo(  58, 702,  -71, 729);                   // 熊野灘
+    ctx.quadraticCurveTo( -88, 756, -103, 784);                   // 熊野
+    ctx.quadraticCurveTo(-120, 812, -141, 836);                   // 新宮
+    ctx.quadraticCurveTo(-182, 892, -221, 925);                   // 潮岬(紀伊突端)
+    ctx.quadraticCurveTo(-312, 902, -368, 845);                   // 白浜
+    ctx.quadraticCurveTo(-410, 816, -435, 784);                   // 御坊
+    ctx.quadraticCurveTo(-446, 730, -428, 687);                   // 雜賀・紀伊水道
+    ctx.quadraticCurveTo(-392, 632, -323, 574);                   // 和泉・堺
+    ctx.quadraticCurveTo(-330, 556, -337, 546);                   // 大坂
+    ctx.quadraticCurveTo(-382, 537, -421, 540);                   // 攝津・神戶
+    ctx.lineTo(WORLD.x0, 552);                                    // 播磨(西切邊)
+    ctx.lineTo(WORLD.x0, 256);
     ctx.closePath();
   };
   // 沿岸波紋:古地圖的做法——只在岸邊起波,遠海留白
   c.save();
-  c.beginPath(); c.rect(0,0,W,H); landTrace(c); c.clip('evenodd');
+  c.beginPath(); c.rect(WORLD.x0, WORLD.y0, WORLD.x1-WORLD.x0, WORLD.y1-WORLD.y0);
+  landTrace(c); c.clip('evenodd');
   for(let k=4; k>=1; k--){
     c.strokeStyle = `rgba(196,214,228,${(0.052*k).toFixed(3)})`;
     c.lineWidth = k*7; c.beginPath(); landTrace(c); c.stroke();
@@ -12443,8 +12602,9 @@ function drawMap(){
   { // 和紙纖維(固定亂數,每次重畫都同一張紙)
     const fr = mulberry32(20260912);
     c.save(); c.beginPath(); landTrace(c); c.clip();
-    for(let i=0;i<760;i++){
-      const x = fr()*W, y = fr()*H, l = 2 + fr()*7, a = fr()*Math.PI;
+    for(let i=0;i<1900;i++){
+      const x = WORLD.x0 + fr()*(WORLD.x1-WORLD.x0), y = WORLD.y0 + fr()*(WORLD.y1-WORLD.y0),
+            l = 2 + fr()*7, a = fr()*Math.PI;
       c.strokeStyle = `rgba(150,136,104,${(0.05 + fr()*0.06).toFixed(3)})`;
       c.lineWidth = 0.7;
       c.beginPath(); c.moveTo(x,y); c.lineTo(x+Math.cos(a)*l, y+Math.sin(a)*l); c.stroke();
@@ -12499,7 +12659,18 @@ function drawMap(){
     c.lineJoin = 'round'; c.lineCap = 'round';
     const SPINE = [[90,74],[150,58],[212,68],[276,52],[330,70],[392,56],[452,70],[512,54],
                    [572,66],[634,52],[694,64],[752,80],[812,70],[858,92],
-                   [776,286],[796,318],[818,352]];
+                   [776,286],[796,318],[818,352],
+                   // 北陸:白山・立山(加賀越前之界,越中之背)
+                   [40,60],[92,18],[148,-24],[206,-56],[262,-86],[318,-104],[380,-130],[440,-166],
+                   // 飛驒・美濃北境
+                   [230,10],[300,-16],[186,42],
+                   // 近江:伊吹・鈴鹿・比良(湖之四圍)
+                   [-20,236],[-28,300],[-10,352],[-4,412],[-176,300],[-182,356],[-188,404],
+                   // 丹波・山城之背
+                   [-268,352],[-312,330],[-230,396],
+                   // 大和・伊賀・大峰(紀伊之脊)
+                   [-160,500],[-108,478],[-196,520],[-236,600],[-196,648],[-262,668],
+                   [-300,726],[-236,742],[-168,760],[-120,712],[-72,664]];
     const mr = mulberry32(1545);
     for(const [bx,by] of SPINE){
       const n = 2 + Math.floor(mr()*3);
@@ -12518,6 +12689,16 @@ function drawMap(){
   }
   c.restore();   // 解除陸地裁切
 
+  // 琵琶湖(近江之湖——東西往來的咽喉,湖上水運即六角・淺井之利)
+  c.fillStyle = MAP_SEA;
+  c.beginPath();
+  c.moveTo(-86, 287);                                   // 北端(塩津)
+  c.quadraticCurveTo(-52, 318, -44, 369);               // 東岸(長浜・彦根)
+  c.quadraticCurveTo(-58, 410, -104, 432);              // 南端(瀬田)
+  c.quadraticCurveTo(-148, 420, -155, 372);             // 西岸(堅田)
+  c.quadraticCurveTo(-160, 320, -86, 287);              // 北西岸(高島)
+  c.closePath(); c.fill();
+  c.strokeStyle = '#6b6148'; c.lineWidth = 1.2; c.stroke();
   // 濱名湖(小潟湖,貼海岸,今切口通海)
   c.fillStyle = MAP_SEA;
   c.beginPath();
@@ -12557,6 +12738,8 @@ function drawMap(){
     const LN = {mino:'美濃', owari:'尾張', mikawa:'三河', totomi:'遠江',
                 suruga:'駿河', kai:'甲斐', shinano:'信濃'};
     for(const pk in LP) label(LN[pk], LP[pk][0], LP[pk][1], PV[pk].txt);
+    // 第一期新入之國(勢力歸屬待大名資料齊備,此處先立其名)
+    for(const [n, x, y, sub] of NEW_PROV) label(n, x, y, sub);
   }
   // 海・地物標籤
   const seaLab = (t,x,y,sz)=>{
@@ -12579,7 +12762,7 @@ function drawMap(){
     lbReserve(mx-15, my-15, mx+15, my+15);
   { const pp = playerPos();
     lbReserve(pp.x-34, pp.y-36, pp.x+36, pp.y+34); }
-  lbReserve(W-63, 7, W-9, 63);          // 季節朱印
+  lbReserve(cam.x + MAP_W - 63, cam.y + 7, cam.x + MAP_W - 9, cam.y + 63);   // 季節朱印(貼窗)
 
   // 主要城
   const castle = (x,y,t,own)=>{  // 天守剪影(依歸屬著色)
@@ -12680,33 +12863,46 @@ function drawMap(){
   lbRun(c);
 
   // 圖例已移出畫布(見 #mapLegend)——它原本佔著知多半島一塊 172×130,而且是點陣文字
+  c.restore();                              // 相機到此為止,以下是貼在窗上的東西
   // 四季の色:整幅略圖染上時節的呼吸(極淡,不奪勢力色)
   {
     const tints = ['rgba(214,140,160,.05)','rgba(90,140,70,.05)','rgba(200,130,50,.06)','rgba(225,230,240,.10)'];
-    c.fillStyle = tints[S.season]; c.fillRect(0, 0, W, H);
+    c.fillStyle = tints[S.season]; c.fillRect(0, 0, MAP_W, MAP_H);
     const srnd = mulberry32(1000 + S.year*4 + S.season);
     if(S.season === 0){          // 春:飄落的櫻瓣
       c.fillStyle = 'rgba(228,160,180,.55)';
-      for(let i=0;i<14;i++){ c.beginPath(); c.arc(srnd()*W, srnd()*H*0.9, 1.5+srnd(), 0, 7); c.fill(); }
+      for(let i=0;i<7;i++){ c.beginPath(); c.arc(srnd()*MAP_W, srnd()*MAP_H*0.55, 2+srnd()*1.6, 0, 7); c.fill(); }
     }else if(S.season === 2){    // 秋:紅葉點點
       c.fillStyle = 'rgba(190,90,40,.5)';
-      for(let i=0;i<10;i++){ const x=srnd()*W, y=srnd()*H*0.85;
+      for(let i=0;i<6;i++){ const x=srnd()*MAP_W, y=srnd()*MAP_H*0.55;
         c.beginPath(); c.moveTo(x,y-2); c.lineTo(x+2,y+1.6); c.lineTo(x-2,y+1.6); c.closePath(); c.fill(); }
     }else if(S.season === 3){    // 冬:山雪
       c.fillStyle = 'rgba(250,250,252,.8)';
-      for(let i=0;i<18;i++){ c.beginPath(); c.arc(srnd()*W, srnd()*H*0.6, 1.2+srnd()*0.8, 0, 7); c.fill(); }
+      for(let i=0;i<10;i++){ c.beginPath(); c.arc(srnd()*MAP_W, srnd()*MAP_H*0.45, 1.6+srnd()*1.1, 0, 7); c.fill(); }
     }
   }
   // 季節朱印(右上)
   const SC = ['#c96a7a','#4a8a4a','#c0702e','#6a7a92'];
   c.fillStyle = 'rgba(246,239,221,0.92)';
-  c.beginPath(); c.arc(W-36, 36, 23, 0, 7); c.fill();
+  c.beginPath(); c.arc(MAP_W-36, 36, 23, 0, 7); c.fill();
   c.strokeStyle = SC[S.season]; c.lineWidth = 2.5; c.stroke();
   c.fillStyle = SC[S.season];
   c.font = 'bold 21px "Noto Serif TC","PMingLiU",serif';
   c.textAlign = 'center';
-  c.fillText(SEASONS[S.season], W-36, 44);
+  c.fillText(SEASONS[S.season], MAP_W-36, 44);
   c.textAlign = 'left';
+  // 方位提示:哪一邊還有地方沒看到
+  {
+    const k = mapCam();
+    c.font = '11px "Noto Serif TC","PMingLiU",serif';
+    c.fillStyle = 'rgba(238,228,203,.72)';
+    c.textAlign = 'center';
+    if(k.x > WORLD.x0 + 2)          c.fillText('◀ 西 · 畿內', 58, MAP_H/2);
+    if(k.x < WORLD.x1 - MAP_W - 2)  c.fillText('東 ▶', MAP_W-40, MAP_H/2);
+    if(k.y > WORLD.y0 + 2)          c.fillText('▲ 北 · 北陸', MAP_W/2, 18);
+    if(k.y < WORLD.y1 - MAP_H - 2)  c.fillText('▼ 南 · 紀伊', MAP_W/2, MAP_H-8);
+    c.textAlign = 'left';
+  }
 }
 
 // ---------- 起動 ----------

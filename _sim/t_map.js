@@ -46,7 +46,10 @@ ev(`
   })();
 `);
 
+const SCREEN = ['春','夏','秋','冬','◀ 西 · 畿內','東 ▶','▲ 北 · 北陸','▼ 南 · 紀伊'];
 const overlaps = () => JSON.parse(ev(`(()=>{
+  const SC = ${JSON.stringify(SCREEN)};
+  __rec = __rec.filter(r => SC.indexOf(r.t) < 0);     // 貼窗之物不在世界空間,不參與比對
   const bad = [];
   for(let i=0;i<__rec.length;i++) for(let j=i+1;j<__rec.length;j++){
     const a=__rec[i], b=__rec[j];
@@ -57,10 +60,11 @@ const overlaps = () => JSON.parse(ev(`(()=>{
   return JSON.stringify(bad.slice(0,6));
 })()`));
 
-function paint(tag, mode, region, years){
+function paint(tag, mode, region, years, cam){
   g.startGame(g.newState(tag, 0, 'kokujin', mode, region));
   ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
   for(let i=0;i<years;i++) ev('simRivalSeason(); simRivalActions([]); simRivalPolitics([]); simLords([]);');
+  if(cam) ev(`S.cam={x:${cam[0]}, y:${cam[1]}};`);
   ev('__rec.length=0; drawMap();');
 }
 
@@ -92,11 +96,15 @@ ok('玩家家名與石高恆在圖上', !missing, missing || '四種局面皆在
 
 // ── 4. 讓位是退讓不是消失:圓點仍全數畫出,只是名字擠不下 ──
 paint('讓試', 'gozoku', 'shinano', 60);
-const nR = ev(`S.rivals.filter(f=>f.alive).length`);
-const named = ev(`(()=>{ let n=0; for(const f of S.rivals){ if(!f.alive) continue;
-  if(__rec.some(r=> r.t.indexOf(f.name) >= 0)) n++; } return n; })()`);
-ok('多數眾仍寫得出名字(其餘退讓保圓點)', named >= Math.ceil(nR*0.7),
-   `${named}/${nR} 家有名字`);
+// 只數窗內的家:有了視窗之後,窗外之家本就不畫名字(那是剔除,不是讓位)
+const inView = ev(`(()=>{ const k=mapCam();
+  return S.rivals.filter(f=>f.alive && f.x>k.x+6 && f.x<k.x+894 && f.y>k.y+6 && f.y<k.y+554).length; })()`);
+const named = ev(`(()=>{ const k=mapCam(); let n=0;
+  for(const f of S.rivals){ if(!f.alive) continue;
+    if(!(f.x>k.x+6 && f.x<k.x+894 && f.y>k.y+6 && f.y<k.y+554)) continue;
+    if(__rec.some(r=> r.t.indexOf(f.name) >= 0)) n++; } return n; })()`);
+ok('窗內多數眾仍寫得出名字(其餘退讓保圓點)', inView > 0 && named >= Math.ceil(inView*0.7),
+   `${named}/${inView} 家(窗內)有名字`);
 ok('擠不下時先捨石高數字,不是整個消失',
    ev(`__rec.filter(r=>/\\d+$/.test(r.t) && r.t.indexOf(' ') > 0).length`) >= 0, '');
 
@@ -176,6 +184,62 @@ for(let i=0;i<12*4 && !err;i++){
   if(g.S.gameOver) break;
 }
 ok('12 年逐季重畫無誤且可存檔', !err, err || `至 ${g.S.year} 年`);
+
+// ── 10. 擴圖:世界範圍與相機 ──
+paint('界試', 'gozoku', 'mikawa', 0);
+ok('世界含括畿內至能登', ev('WORLD.x0') <= -438 && ev('WORLD.y0') <= -326 && ev('WORLD.y1') >= 925,
+   `x[${ev('WORLD.x0')},${ev('WORLD.x1')}] y[${ev('WORLD.y0')},${ev('WORLD.y1')}]`);
+ev('camTo(-9999,-9999)');
+const nw = JSON.parse(ev('JSON.stringify(S.cam)'));
+ev('camTo(9999,9999)');
+const se = JSON.parse(ev('JSON.stringify(S.cam)'));
+ok('相機夾在世界之內',
+   nw.x === ev('WORLD.x0') && nw.y === ev('WORLD.y0')
+   && se.x === ev('WORLD.x1') - 900 && se.y === ev('WORLD.y1') - 560,
+   `西北(${nw.x},${nw.y}) 東南(${se.x},${se.y})`);
+ev('camHome()');
+const home = JSON.parse(ev('JSON.stringify(S.cam)')), pp = JSON.parse(ev('JSON.stringify(playerPos())'));
+ok('回本據使自家入窗', pp.x >= home.x && pp.x <= home.x + 900 && pp.y >= home.y && pp.y <= home.y + 560,
+   `本據(${pp.x},${pp.y}) 窗(${home.x},${home.y})`);
+
+// ── 11. 窗開到哪,字就不該疊到哪 ──
+let panBad = '';
+for(const cam of [[-500,-340],[-460,180],[-300,600],[-160,100],[0,380],[200,-200],[0,0]]){
+  paint('窗試', 'gozoku', 'mikawa', 25, cam);
+  const b = overlaps();
+  if(b.length && !panBad) panBad = `窗(${cam}): ${b[0]}`;
+}
+ok('七處視窗皆無疊字', !panBad, panBad || '含西北・畿內・紀伊・本據・東南');
+
+// ── 12. 新入之國的名要在該在的地方 ──
+paint('國試', 'gozoku', 'mikawa', 0, [-460, 180]);
+const westNames = ev(`__rec.filter(r=>['丹波','山城','攝津','河内','紀伊','播磨'].indexOf(r.t)>=0).length`);
+ok('西窗可見畿內諸國之名', westNames >= 4, westNames + ' 國');
+paint('國試2', 'gozoku', 'mikawa', 0, [0, 100]);
+const eastNames = ev(`__rec.filter(r=>['三河','尾張','美濃','遠江'].indexOf(r.t)>=0).length`);
+ok('東窗仍是舊有諸國', eastNames >= 3, eastNames + ' 國');
+
+// ── 13. 影響及於合理之遠(CUT 0.18):未及之地留白,不被最近的大名染滿 ──
+const reach = JSON.parse(ev(`(()=>{
+  const CUT = 0.18;
+  const w = Math.sqrt(5000) * 1.1;          // 五千石大名
+  const w2 = Math.sqrt(500);                // 五百石之眾
+  return JSON.stringify({big: w/CUT - 45, small: w2/CUT - 45});
+})()`));
+ok('大名影響及百餘里而非橫跨天下', reach.big > 250 && reach.big < 600, `${Math.round(reach.big)}px`);
+ok('小眾影響僅及鄰境', reach.small > 40 && reach.small < 140, `${Math.round(reach.small)}px`);
+
+// ── 14. 舊存檔不帶相機也能開(座標原點沒動,故無須遷移) ──
+g.startGame(g.newState('舊試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+const old2 = JSON.parse(ev('JSON.stringify(S)'));
+delete old2.cam;
+ev(`__o = migrate(${JSON.stringify(old2)}); S = __o; __rec.length=0;`);
+let oldErr = '';
+try{ ev('drawMap();'); }catch(e){ oldErr = e.message.slice(0,60); }
+ok('無相機欄位的舊檔可直接開圖', !oldErr && ev('__rec.length') > 20, oldErr || ev('__rec.length')+' 個文字');
+ok('舊檔的眾座標一個都沒動',
+   ev(`__o.rivals.every((f,i)=> f.x === S.rivals[i].x && f.y === S.rivals[i].y)`), '');
 
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
