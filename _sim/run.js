@@ -213,6 +213,33 @@ function household(P, rec){
       drain(P, rec);
     }
   }
+  // ── 對大名動手:迫使臣服 / 出兵攻打 ──
+  // 第二個盲點:run.js 的出兵對象一向只有 S.rivals(眾),從來沒碰過大名,
+  // 於是八十局裡臣服大名 0 家、天下統一 0 局——那同樣可能是量測台的殘缺。
+  if(S.lords && Math.random() < 0.5){
+    const tgt = ev(`(()=>{
+      const c = aiLords().filter(k => S.lords[k].alive !== false && !S.lords[k].submitted
+        && lordPower(k) > 0 && playerPower() >= lordPower(k) * 1.4);
+      if(!c.length) return null;
+      c.sort((a, b) => lordPower(a) - lordPower(b));   // 先挑最弱的一家
+      return JSON.stringify(c[0]); })()`);
+    if(tgt){
+      sandbox.openLord(JSON.parse(tgt));
+      let n4 = 0;
+      while(!$('modalBack').classList.contains('hidden') && n4++ < 14){
+        const btns = [...$('modalChoices').querySelectorAll('button')];
+        const sub = btns.find(b => /迫使.*臣服/.test(b.textContent));
+        const atk = btns.find(b => /^⚔ 出兵攻打/.test(b.textContent));
+        const pick = sub || (S.isDaimyo && Math.random() < 0.5 ? atk : null);
+        if(pick){ pick.click(); break; }
+        const close = btns.find(b => /^(退下|告辭|罷了|……|領命|不必)/.test(b.textContent));
+        if(close){ close.click(); break; }
+        $('modalBack').classList.add('hidden'); break;
+      }
+      $('modalBack').classList.add('hidden');
+      drain(P, rec);
+    }
+  }
   // 招民(人口是石高的天花板)
   if(S.money >= 400 && Math.random() < 0.3){ sandbox.doBoshu(); drain(P, rec); }
   // 主動出兵討伐:武斷/野心玩家的核心循環——兵強糧足就打最弱的鄰家

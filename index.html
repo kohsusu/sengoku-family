@@ -599,7 +599,7 @@
 
 <script>
 'use strict';
-const BUILD = 'rc1';
+const BUILD = 'rc2';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -5372,7 +5372,15 @@ function renderGechi(){
 const playerPower = () => ri((S.kokudaka
   + myVassals().reduce((a,f)=>a + f.koku*(KIND_MIL[f.clanKind]||1), 0)
   + (S.lords ? Object.keys(S.lords).filter(k=>k!=='player' && S.lords[k].submitted && S.lords[k].alive!==false)
-      .reduce((a,k)=>a + (S.lords[k].demesne||0)*0.25, 0) : 0))/40);
+      .reduce((a,k)=>a + (S.lords[k].demesne||0)*0.15, 0) : 0))/40);   // 臣服者之力可借,然非己有
+// 迫使臣服的絕對門檻:天下最強一家的四分之三。
+// 「威壓」本就是以勢逼人——你得是數一數二的那個,不能只是比一片廢墟大。
+// 取中位數之八成試過:八十局統一 47 局仍嫌寬,且中位之家在殘局裡本就不強。
+function subjugateBar(){
+  const live = aiLords().filter(k => S.lords[k].alive !== false && !S.lords[k].submitted);
+  if(!live.length) return 0;
+  return ri(Math.max(...live.map(k => lordPower(k))) * 0.75);
+}
 function strongestLord(){ const a = aiLords(); return a.length ? a.reduce((x,y)=>lordPower(x)>=lordPower(y)?x:y) : null; }
 const WAR_NAMES = ['尾三國境の合戰','小豆坂の戰','鳴海表の合戰','三河湾岸の戰','石ヶ瀨の戰'];
 // ---------- 城池(國戰的具體目標) ----------
@@ -12081,9 +12089,17 @@ function openLord(key){
       choices.push({label:`⚔ 出兵攻打${M.name}家`, sub:`大名之戰:勝則割取領地(國力 ${lordPower(key)}${(L.wounds||0)>=0.05?`・戰創-${ri(L.wounds*100)}%正虛`:''} vs 我 ${playerPower()})`, fn:()=>{ daimyoWar(key, true); }});
     }
     // 迫使臣服:大名の上に立つ者,即為大名(昇格替代條件)
-    if(key !== 'player' && !L.submitted && lordPower(key) > 0 && playerPower() >= lordPower(key)*1.4){
-      const pSub = clamp(0.25 + (playerPower()/lordPower(key) - 1.4)*0.4 + (S.kani||0)*0.05 + (L.favor>=20?0.1:0), 0.1, 0.85);
-      choices.push({label:`🏯 迫使${M.name}家臣服`, sub:`威壓其上表稱臣(成算約 ${(pSub*100).toFixed(0)}%)——成則歲歲來貢${!S.isDaimyo?'、⛩ 即刻昇格大名(不問其他條件)':''};敗則結仇`, fn:()=>{
+    // 原本只比「我 ≥ 其 1.4 倍」——那是相對值,沒有底。一個千餘石之家只要遇上
+    // 被打殘的大名就能逼降,而每降一家,其直轄又灌回自己的國力,三兩家之後
+    // 便如骨牌(實測八十局統一七十六局,其中不乏石高不足兩千者)。
+    // 故加一道絕對門檻:你得是天下數得上的一號人物,不能只是比一片廢墟大。
+    const bar = subjugateBar(), subN = aiLords().filter(k2=>S.lords[k2].submitted).length;
+    if(key !== 'player' && !L.submitted && lordPower(key) > 0
+       && playerPower() >= lordPower(key)*1.4 && playerPower() >= bar){
+      // 降得越多,諸家越戒懼——後面的一家比前面的難
+      const pSub = clamp(0.25 + (playerPower()/lordPower(key) - 1.4)*0.4 + (S.kani||0)*0.05
+                       + (L.favor>=20?0.1:0) - subN*0.045, 0.08, 0.85);
+      choices.push({label:`🏯 迫使${M.name}家臣服`, sub:`威壓其上表稱臣(成算約 ${(pSub*100).toFixed(0)}%${subN?`;已降 ${subN} 家,諸家戒懼 -${ri(subN*4.5)}%`:''})——成則歲歲來貢${!S.isDaimyo?'、⛩ 即刻昇格大名(不問其他條件)':''};敗則結仇`, fn:()=>{
         if(Math.random() < pSub){
           L.submitted = true; L.favor = 60;
           gainPrestige(20);

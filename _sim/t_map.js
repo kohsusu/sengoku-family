@@ -492,6 +492,37 @@ ok('大名遣間者可盡窺天下諸眾',
    ev(`S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*2.8).length`) >= ev('S.rivals.filter(f=>f.alive).length') * 0.9,
    ev(`S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*2.8).length`) + ' / ' + ev('S.rivals.filter(f=>f.alive).length') + ' 家');
 
+// ── 28. 乙包:迫使臣服的絕對門檻 ──
+g.startGame(g.newState('壓試', 0, 'kokujin', 'daimyo', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+ok('門檻為天下最強一家的四分之三',
+   ev("(()=>{ const live=aiLords().filter(k=>S.lords[k].alive!==false && !S.lords[k].submitted);"
+      + " return Math.abs(subjugateBar() - ri(Math.max(...live.map(k=>lordPower(k)))*0.75)) <= 1; })()"),
+   '現門檻 ' + ev('subjugateBar()'));
+// 造一個「比廢墟大,但自己也是廢墟」的局面——舊制在此可長驅直入
+ev(`S.kokudaka = 1800; S.isDaimyo = true;
+    aiLords().forEach(k=>{ S.lords[k].demesne = 12000; S.lords[k].submitted = false; });
+    S.lords.ashikaga.demesne = 900;`);
+const pwMe = ev('playerPower()'), pwAshi = ev("lordPower('ashikaga')"), barNow = ev('subjugateBar()');
+ok('千餘石之家不得逼降(縱使比那家殘破的大 1.4 倍)',
+   pwMe >= pwAshi*1.4 && pwMe < barNow,
+   '我 ' + pwMe + ' vs 足利 ' + pwAshi + '(×1.4=' + Math.round(pwAshi*1.4) + ') / 門檻 ' + barNow);
+ev(`S.kokudaka = 400000;`);
+ok('天下數一數二者方可逼降', ev('playerPower() >= subjugateBar()'),
+   `我 ${ev('playerPower()')} ≥ 門檻 ${ev('subjugateBar()')}`);
+// 戒懼遞減
+ev(`S.kokudaka = 400000; aiLords().slice(0,6).forEach(k=>{ S.lords[k].submitted = true; });`);
+const subN = ev(`aiLords().filter(k=>S.lords[k].submitted).length`);
+ok('降得越多,諸家越戒懼(成算遞減)', subN >= 6,
+   '已降 ' + subN + ' 家 → 成算 -' + Math.round(subN*4.5) + '%');
+// 臣服者之力可借而非己有
+ev(`S.kokudaka = 1000; aiLords().forEach(k=>{ S.lords[k].submitted = false; });`);
+const p0 = ev('playerPower()');
+ev(`S.lords.imagawa.submitted = true; S.lords.imagawa.demesne = 40000;`);
+const p1 = ev('playerPower()');
+ok('臣服者的直轄只灌回一成五(原為二成五,雪球太快)',
+   Math.abs((p1 - p0) - Math.round(40000*0.15/40)) <= 2, '國力 ' + p0 + ' → ' + p1 + '(+' + (p1-p0) + ')');
+
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
 console.log(n?'✗ 有未過':'全部通過');
