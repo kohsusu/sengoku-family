@@ -12,12 +12,13 @@
 <style>
   :root{
     --paper:#f3ead8; --paper2:#e9dcc3; --ink:#3a2f24; --ink2:#6b5b45;
-    --accent:#a63c2e; --accent2:#7d2f24; --gold:#b08a3e; --ok:#4a7a3a; --bad:#a63c2e;
+    --accent:#a63c2e; --accent2:#7d2f24; --gold:#b08a3e; --ok:#4a7a3a; --bad:#8c2f3a;
     --panel:#faf4e6; --line:#c9b891;
     --crimson:#8a2a1e; --navy:#4a4460; --murasaki:#7a4a9a; --loss:#a02818;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--paper);color:var(--ink);font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;min-height:100vh}
+  body{background:var(--paper);color:var(--ink);font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;min-height:100vh;
+       line-height:1.7;line-break:strict;overflow-wrap:break-word;word-break:normal}
   .hidden{display:none!important}
   button{font-family:inherit;cursor:pointer;border:1px solid var(--accent2);background:var(--accent);color:#fff;border-radius:6px;padding:6px 14px;font-size:14px}
   button:hover{background:var(--accent2)}
@@ -80,8 +81,8 @@
   main{display:flex;flex-wrap:wrap;gap:12px;padding:12px;align-items:flex-start}
   #mapWrap{flex:1 1 560px;min-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
   #map{width:100%;height:auto;display:block;border-radius:6px}
-  #mapCap{font-size:12px;color:var(--ink2);text-align:center;padding-top:4px}
-  #panel{flex:1 1 340px;min-width:320px;max-width:480px;display:flex;flex-direction:column;gap:10px}
+  #mapCap{font-size:12px;color:var(--ink2);text-align:center;padding-top:4px;max-width:52ch;margin:0 auto;line-height:1.7}
+  #panel{flex:1 1 340px;min-width:320px;max-width:480px;display:flex;flex-direction:column;gap:10px;padding-bottom:92px}
   #panelL,#panelR{display:contents}
   @media (min-width:1500px){
     #panel{flex:1 1 880px;max-width:930px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
@@ -108,7 +109,8 @@
     #modalBack{backdrop-filter:none}
   }
   @media (pointer: coarse){
-    .ksbtn{min-height:40px}
+    .ksbtn, #modalHud .ksbtn{min-height:40px;padding-left:10px;padding-right:10px}
+    .gechiRow button, .gechiRow select{min-height:42px}
     .kstin,.hxcell select{min-height:38px}
     .rivalRow{padding:9px 4px}
   }
@@ -139,7 +141,11 @@
   .gechiRow .gname{min-width:80px;font-weight:bold;font-size:13px}
   .gechiRow .gsub{font-size:11px;color:var(--ink2);flex:1 1 100%;margin-top:-2px}
   .gechiRow select{font-size:12px;padding:2px 4px;max-width:132px}
-  .gechiRow button{font-size:12px;padding:3px 9px;min-height:0}
+  .gechiRow button{font-size:12px;padding:3px 9px}
+  #modalHud .ksbtn.on{background:var(--gold);border-color:#8a6a2e;color:#fff;font-weight:bold}
+  #topbar .res,#topbar .fam,button,select,input,.tag,.ctag,.pip,.fbcard,.hxcell,.sknode{line-height:1.35}
+  #topbar .res,.retainer .rstats,.fbcard,.hxcell,.famRow,.gechiRow,.rivalRow .rsub,#modalHud .kstbl{
+    font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
   .gObey{font-size:11px;font-weight:bold}
   .gObey.hi{color:var(--accent2)} .gObey.mid{color:#9a7b30} .gObey.lo{color:var(--accent)}
   #gechiHint{font-size:12px;color:var(--ink2);min-height:30px;margin-top:6px;line-height:1.5}
@@ -172,15 +178,13 @@
   #policyBox .row:last-child{margin-bottom:0}
   .taxBtn{padding:3px 10px;font-size:13px}
   .taxBtn.on{background:var(--gold);border-color:#8a6a2e;color:#fff}
-  #actionBar{position:sticky;bottom:10px;z-index:6;display:flex;gap:8px;padding-top:8px;
-    background:linear-gradient(to bottom, rgba(243,234,216,0), var(--paper) 45%)}
+  #actionBar{position:sticky;bottom:calc(10px + env(safe-area-inset-bottom));z-index:6;display:flex;gap:8px;padding-top:8px;
+    background:linear-gradient(to bottom, rgba(240,230,205,0), #f0e6cd 45%)}
   #btnEnd{font-size:18px;padding:12px;letter-spacing:6px;flex:1}
   #btnSave2{flex:0 0 auto;font-size:16px;padding:12px 13px}
   #btnSave2.dirty{border-color:var(--accent);color:var(--accent);font-weight:bold}
-  #logBox{margin:0 12px 12px;background:#2f271d;color:#d8cbb2;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.7;height:150px;overflow-y:auto}
-  #logBox .y{color:#ffd98a}
-  #logBox .good{color:#9fd08a}
-  #logBox .bad{color:#ff9b8a}
+  #logBox{margin:0 auto 12px;max-width:min(68ch, calc(100% - 24px));padding:10px 14px;font-size:13px;line-height:1.7;
+          max-height:150px;min-height:64px;overflow-y:auto}   /* 底色與文字色見下方「家史繪卷」段 */
   #sysRow{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:0 12px 10px}
   #slotTag{margin-right:auto;font-size:12px;color:var(--ink2)}
   #sysRow button{font-size:12px;padding:4px 10px}
@@ -225,7 +229,7 @@
   #modalFace canvas{background:var(--panel);border:1px solid var(--line);border-radius:50%;margin-bottom:8px}
   #modalBody{font-size:14px;line-height:1.8;margin-bottom:16px;white-space:pre-wrap}
   #modalChoices{display:flex;flex-direction:column;gap:8px}
-  #modalChoices button{text-align:left;font-size:14px;padding:9px 14px}
+  #modalChoices button{text-align:left;font-size:14px;padding:9px 14px;flex:0 0 auto}   /* 直列 flex 會把按鈕壓到 min-height 以下,副標因而溢出疊到下一顆 */
   #modalChoices button small{display:block;font-size:11px;opacity:.85}
 
   /* ================= 美術刷新:濃和風 ================= */
@@ -337,7 +341,7 @@
   #modalHud .kspos{display:inline-block;font-size:11px;background:#3a2f24;color:#f3ead8;border-radius:4px;padding:1px 6px}
   #modalHud .kspos.sen{background:#8a3a2e}#modalHud .kspos.hon{background:#6a4a1c}
   #modalHud .kspos.left,#modalHud .kspos.right{background:#44523a}#modalHud .kspos.dono{background:#4a4a52}
-  #modalHud .ksbtn{font-size:11px;padding:2px 7px;min-height:0;margin:0 2px 2px 0;border-radius:5px}
+  #modalHud .ksbtn{font-size:11px;padding:2px 7px;margin:0 2px 2px 0;border-radius:5px}   /* 不可寫 min-height:0——ID 特異度會殺死觸控規則 */
   #modalHud .ksmini{height:6px;background:rgba(0,0,0,.16);border-radius:4px;overflow:hidden;width:74px}
   #modalHud .ksmini i{display:block;height:100%;background:linear-gradient(90deg,#c0862e,#e0b44e)}
   #modalHud .kstbl tr.foe .ksmini i{background:linear-gradient(90deg,#8a3a2e,#c06a4a)}
@@ -377,7 +381,7 @@
     .retainer{flex-wrap:wrap;gap:6px;padding:9px 2px}
     .retainer canvas{width:42px;height:42px}
     .retainer .rname{width:auto;flex:1 1 auto;font-size:15px}
-    .retainer .rstats{width:auto;text-align:right;font-size:11.5px}
+    .retainer .rstats{width:auto;text-align:right;font-size:13px}
     .retainer select{flex:1 1 100%;min-height:40px;font-size:15px;padding:6px 8px}
     button{padding:9px 14px;font-size:15px;min-height:44px}
     button.mini,.slotRow button,#sysRow button,.taxBtn{padding:8px 12px;font-size:13.5px;min-height:42px}
@@ -540,7 +544,7 @@
 
 <script>
 'use strict';
-const BUILD = 'p3a';
+const BUILD = 'art1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -12151,9 +12155,8 @@ function drawMap(){
   c.fillText('富士',730,212);
 
   // 主要城
-  const LC2 = {imagawa:'#6a3f88', oda:'#a8842a', tokugawa:'#4a6a9a', takeda:'#b04a3a', toyotomi:'#3a7a6a', player:'#a63c2e'};
   const castle = (x,y,t,own)=>{  // 天守剪影(依歸屬著色)
-    c.fillStyle = own ? (LC2[own] || '#3a2f24') : '#3a2f24';
+    c.fillStyle = own ? (LORDC[own] || '#3a2f24') : '#3a2f24';   // 與領地色塊・圖例同表(原有第二份色表,武田顏色對不上)
     c.fillRect(x-4, y-3, 8, 5);
     c.beginPath(); c.moveTo(x-6, y-3); c.lineTo(x, y-9); c.lineTo(x+6, y-3); c.closePath(); c.fill();
     c.fillRect(x-2, y-8, 4, 2);

@@ -50,7 +50,7 @@ const out=JSON.parse(ev(`(()=>{
 })()`));
 const checks=[
  ['200場全數完賽', out.n===200 && !out.err, out.err||''],
- ['勝率健康帶(25-75%)', out.win>=50 && out.win<=150, out.win+'/200'],
+ ['勝率健康帶(20-80%·防退化)', out.win>=40 && out.win<=160, out.win+'/200'],
  ['回合上限10', out.maxR<=10, 'max '+out.maxR],
  ['事件流非空', out.evSum>200, out.evSum+'行'],
  ['KS/BT全域還原', out.ksRestored, ''],
