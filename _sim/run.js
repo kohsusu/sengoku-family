@@ -51,18 +51,28 @@ save = function(){};
 const NUKE = /新的家史|重新開始/;
 const PERSONAS = [
  {name:'農本', tasks:['tonden','farm','fushin','educate','farm'],
+  sk:['suiri.tameike','suiri.shinden','suiri.kanbatsu','suiri.teibou','suiri.suisha','suiri.yousui',
+      'suiri.nimou','suiri.shuun','trade.komeya','trade.bashaku','bugei.yarifusuma','bugei.choren'],
   like:/屯田|開墾|農|水利|救濟|開倉|不趁人之危|婉拒|辭謝|原禮|忍辱|求和|息事|受降|安堵|贈禮|說法|祈禱|坐視|據實|領命|承襲|休養|招民|固守/,
   hate:/根切|海賊|夜襲|謀反|抗命|斷然拒絕|舉兵|趁虛|隱田|逃散|自立/, tax:0},
  {name:'武斷', tasks:['drill','drill','tonden','hunt','drill'],
+  sk:['bugei.choren','bugei.yarifusuma','bugei.yumigumi','bugei.kiba','bugei.teppogumi','bugei.jindate',
+      'bugei.futaiten','bugei.gunbai','suiri.tameike','suiri.shinden','trade.bashaku','suiri.kanbatsu'],
   like:/練兵|操練|出兵|討伐|進軍|迎擊|突擊|傾力|力攻|割地|根切|先鋒|突出|趁虛|舉兵|據城迎擊|開戰|魚鱗/,
   hate:/求和|息事|忍辱|退讓|婉拒|堅壁|開城降伏|撤圍|罷兵/, tax:1},
  {name:'商賈', tasks:['trade','trade','tonden','rakuichi','educate'],
+  sk:['trade.bashaku','trade.komeya','trade.zayaku','trade.kaido','trade.goyou','trade.honai',
+      'trade.teppoya','trade.karamono','suiri.tameike','suiri.shinden','suiri.kanbatsu','bugei.yarifusuma'],
   like:/經商|商|買田|樂市|廻船|借銀|御用金|如數|受之|贈禮|取引|海運|求和|納貢|遠戰/,
   hate:/根切|謀反|出兵|討伐|舉兵/, tax:1},
  {name:'忠臣', tasks:['tonden','drill','farm','toritsugi','fushin'],
+  sk:['suiri.tameike','bugei.yarifusuma','suiri.shinden','bugei.choren','trade.bashaku','suiri.kanbatsu',
+      'bugei.yumigumi','suiri.teibou','bugei.jindate','trade.komeya','suiri.suisha','bugei.kiba'],
   like:/傾力|領命|應召|臣從|請求臣從|獻|安堵|偏諱|據實|先鋒|斷後|協調|受降|援軍|迎擊|昇格|雁行/,
   hate:/謀反|自立|抗命|拒絕|通款|密約|隱田|抜け駆け|絕緣/, tax:1},
  {name:'野心', tasks:['drill','tonden','spy','trade','drill'],
+  sk:['bugei.choren','bugei.yarifusuma','trade.bashaku','bugei.yumigumi','bugei.kiba','bugei.teppogumi',
+      'suiri.tameike','bugei.jindate','trade.komeya','suiri.shinden','bugei.gunbai','trade.zayaku'],
   like:/謀反|自立|通款|密約|隱田|抜け駆け|絕緣|勧誘|壓迫|諜報|流言|出兵|討伐|趁虛|根切|昇格|迫使|迂迴/,
   hate:/忍辱|納貢|退讓|求和|婉拒/, tax:2}
 ];
@@ -117,6 +127,28 @@ function household(P, rec){
   if(!S.wife){
     if(fem && S.money >= 30){ sandbox.doMuko(); drain(P, rec); }
     else if(!fem && S.money >= 20) sandbox.doMarry();
+  }
+  // ── 家業修練配點:改制後點由「精進」而來,配到哪一道是真決策 ──
+  const PT = () => ev('typeof skPt === "function" ? skPt() : (skUnspent("suiri")+skUnspent("trade")+skUnspent("bugei"))');
+  while(PT() > 0){
+    const before = PT();
+    for(const spec of (P.sk || [])){
+      if(PT() <= 0) break;
+      const [t, k] = spec.split('.');
+      ev(`skAlloc('${t}','${k}')`);
+    }
+    if(PT() === before){          // 取向全滿或全鎖:任取一可修者,不讓點爛在手裡
+      let moved = false;
+      for(const t of ['suiri','trade','bugei']){
+        for(const k of Object.keys(ev(`JSON.stringify(SKILLS['${t}'])`) ? JSON.parse(ev(`JSON.stringify(SKILLS['${t}'])`)) : {})){
+          if(PT() <= 0) break;
+          ev(`skAlloc('${t}','${k}')`);
+          if(PT() < before){ moved = true; break; }
+        }
+        if(moved) break;
+      }
+      if(!moved) break;
+    }
   }
   // 側室:當主為男、有餘裕就納(續香火的主要手段)
   if(!fem && S.money >= 120 && S.prestige >= 25 && (S.consorts||[]).length < 3 && Math.random() < 0.5){
@@ -236,7 +268,8 @@ const runs = [];
 const N = Number(process.argv[2] || 100);
 for(let seed = 0; seed < N; seed++){
   const rnd = mulberry32(seed*2654435761 + 12345);
-  const P = PERSONAS[Math.floor(rnd()*PERSONAS.length)];
+  const P = process.env.FORCE_P ? (PERSONAS.find(x=>x.name===process.env.FORCE_P) || PERSONAS[0])
+                                : PERSONAS[Math.floor(rnd()*PERSONAS.length)];
   const clan = CLANS[Math.floor(rnd()*CLANS.length)];
   const mode = rnd() < 0.25 ? 'daimyo' : 'gozoku';
   const region = ['mikawa','owari','totomi','shinano'][Math.floor(rnd()*4)];

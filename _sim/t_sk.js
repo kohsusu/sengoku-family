@@ -34,19 +34,19 @@ const clickBy = re => {
 // ── A. 閘門與配點流程(直呼 skAlloc;UI 節點在瀏覽器驗) ──
 {
   fresh();
-  ev('S.suiri = 7;');
-  ok('A0 未配點=7', ev(`skUnspent('suiri')`)===7, ev(`skUnspent('suiri')`));
+  ev('S.keikoPt = 7;');
+  ok('A0 池中未配點=7', ev(`skPt()`)===7, ev(`skPt()`));
   ok('A1 T2初始鎖定:skAlloc無效', (ev(`skAlloc('suiri','teibou')`), ev(`skR('suiri','teibou')`))===0, '');
   for(let i=0;i<4;i++) ev(`skAlloc('suiri','tameike')`);   // 第4次應被3級上限擋下
   ok('A2 同技能3級封頂', ev(`skR('suiri','tameike')`)===3, ev(`skR('suiri','tameike')`));
   ev(`skAlloc('suiri','shinden'); skAlloc('suiri','shinden');`);
   ok('A3 T1滿5後中傳可修', (ev(`skAlloc('suiri','teibou')`), ev(`skR('suiri','teibou')`))===1, '');
   ok('A4 奧傳仍鎖', (ev(`skAlloc('suiri','shuun')`), ev(`skR('suiri','shuun')`))===0, '');
-  ev('S.suiri = 12;');
+  ev('S.keikoPt = 6;');
   ev(`skAlloc('suiri','teibou'); skAlloc('suiri','teibou'); skAlloc('suiri','suisha'); skAlloc('suiri','suisha');`);
   ok('A5 中傳滿5→奧傳開', (ev(`skAlloc('suiri','shuun')`), ev(`skR('suiri','shuun')`))===1, '');
   ev(`skAlloc('suiri','shuun'); skAlloc('suiri','shuun');`);   // 第3次:T3上限2
-  ok('A6 奧傳2級封頂+12點配畢', ev(`skR('suiri','shuun')`)===2 && ev(`skUnspent('suiri')`)===0, '');
+  ok('A6 奧傳2級封頂+點配畢', ev(`skR('suiri','shuun')`)===2 && ev(`skPt()`)===0, `舟運 ${ev(`skR('suiri','shuun')`)} 級・餘 ${ev(`skPt()`)} 點`);
   ok('A7 樹HTML含初傳/中傳/奧傳且無T字樣', (()=>{const h=ev(`skTreeHtml('suiri')`);return /初傳/.test(h)&&/中傳/.test(h)&&/奧傳/.test(h)&&!/T1|T2|T3/.test(h);})(), '');
   ok('A8 配畢後節點無可點(skcan)', !/skcan/.test(ev(`skTreeHtml('suiri')`)), '');
 }
@@ -54,7 +54,7 @@ const clickBy = re => {
 // ── B. 公式掛鉤 ──
 {
   fresh();
-  ev(`S.skSuiri={tameike:3,kanbatsu:3}; S.suiri=6; S.weather={f:0.6,name:'凶作'}; S.farmWork=0; S.pop=99999;`);
+  ev(`S.skSuiri={tameike:3,kanbatsu:3}; skSync(); S.weather={f:0.6,name:'凶作'}; S.farmWork=0; S.pop=99999;`);
   // 收穫: kokudaka500 → wf=0.6+0.12=0.72; mult=1+6*0.021+0.15
   const harv = ev(`(()=>{ const wf = S.weather.f < 0.9 ? Math.min(1, S.weather.f + skR('suiri','kanbatsu')*0.04) : S.weather.f; return wf; })()`);
   ok('B1 旱魃備え:凶作0.6→0.72', Math.abs(harv-0.72)<1e-9, harv);
@@ -63,7 +63,7 @@ const clickBy = re => {
   ok('B2 牙錢1.25→1.0(米問屋3+舟運2,下限1.0)', buyMul===1.0, buyMul);
   ok('B3 御用金-18%', ev('kugeCost()')===Math.round(600*0.82), ev('kugeCost()'));
   ok('B4 官位費-18%', ev('kaniCost(1)') < ev(`(()=>{const bak=S.skTrade.goyou; S.skTrade.goyou=0; const v=kaniCost(1); S.skTrade.goyou=bak; return v;})()`), '');
-  const dmg = ev(`Math.max(0, 0.10 * (1 - (S.suiri||0) * 0.04 - skR('suiri','teibou') * 0.20))`);
+  const dmg = ev(`Math.max(0, 0.10 * (1 - skR('suiri','teibou') * 0.30))`);   // 等級被動已折回樹裡,只剩堤防項
   ok('B5 水害公式含堤防項', dmg <= 0.10, dmg.toFixed(3));
 }
 
@@ -71,7 +71,7 @@ const clickBy = re => {
 {
   fresh();
   ev(`S.skSuiri={suisha:3,nimou:2}; S.skTrade={karamono:2,teppoya:2};
-     S.suiri=12; S.tradeLv=12; S.pop=1000; S.money=500; S.army={ashigaru:200,yumi:0,kiba:0,teppo:0}; S.soldiers=200;`);
+     skSync(); S.pop=1000; S.money=500; S.army={ashigaru:200,yumi:0,kiba:0,teppo:0}; S.soldiers=200;`);
   let sawKara=0, sawTep=0, sawNimou=0, sawSuisha=0;
   for(let t=0;t<60;t++){
     ev(`S.money=500; S.army.teppo=0; S.soldiers=armyTotal(S.army);
@@ -102,7 +102,7 @@ const clickBy = re => {
 {
   fresh();
   ev('delete S.skSuiri; delete S.skTrade;');
-  ok('D1 無欄位時skR=0/unspent=level', ev(`skR('suiri','tameike')`)===0 && ev(`skUnspent('trade')`)===(ev('S.tradeLv')||0), '');
+  ok('D1 無欄位時skR=0、等級=0、池為空', ev(`skR('suiri','tameike')`)===0 && ev(`skLv('trade')`)===0 && ev(`skPt()`)===0, '');
 }
 
 for(const [st,n,note] of R) console.log(st, n, note?(' — '+note):'');
