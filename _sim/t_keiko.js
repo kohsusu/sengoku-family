@@ -96,8 +96,11 @@ ev(`S.keikoPt=8;
     for(let i=0;i<3;i++) skAlloc('bugei','kiba');`);
 const mMine = ev(`bugeiMul({ashigaru:0,yumi:0,kiba:100,teppo:0},'charge',{weather:'sunny'})`);
 ok('騎馬 3 級使突擊 ×1.18', near(mMine, 1.18, 1e-9), '×'+mMine.toFixed(3));
-const sides = JSON.parse(ev(`(()=>{ const mk=k=>({id:'x',name:'t',gen:ensureApt({name:'t',bu:60,nai:50,chi:50,trait:null}),
-  kind:k, pos:'hon', army:{ashigaru:0,yumi:0,kiba:100,teppo:0}, mor:0, broke:false});
+// 兩側必須共用同一位大將:ensureApt 每次會隨機配兵種適性(專精 ×1.4 / 不擅 ×0.8),
+// 那個變異比武藝的 ×1.18 還大,各造一位的話這條測的是運氣不是武藝。
+const sides = JSON.parse(ev(`(()=>{ const gen=ensureApt({name:'t',bu:60,nai:50,chi:50,trait:null});
+  const mk=k=>({id:'x',name:'t',gen, kind:k, pos:'hon',
+                army:{ashigaru:0,yumi:0,kiba:100,teppo:0}, mor:0, broke:false});
   const fa={ashigaru:100,yumi:0,kiba:0,teppo:0}, cx={weather:'sunny',terrain:'plain'};
   return JSON.stringify([ksStrength(mk('my'),'charge',cx,fa), ksStrength(mk('foe'),'charge',cx,fa)]); })()`));
 ok('敵軍不沾玩家武藝', sides[0] > sides[1] * 1.1, `我 ${sides[0].toFixed(0)} vs 敵 ${sides[1].toFixed(0)}`);

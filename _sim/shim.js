@@ -14,6 +14,8 @@ function makeCtx(){
   c.createLinearGradient = c.createRadialGradient = () => grad;
   c.measureText = t => ({width: (t||'').length * 6});
   c.getImageData = (x,y,w,h) => ({data:new Uint8ClampedArray(Math.max(4,(w|0)*(h|0)*4))});
+  c.createImageData = (w,h) => ({width:w|0, height:h|0,
+    data:new Uint8ClampedArray(Math.max(4,(w|0)*(h|0)*4))});
   c.canvas = null;
   return c;
 }

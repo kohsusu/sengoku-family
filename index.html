@@ -81,7 +81,16 @@
   main{display:flex;flex-wrap:wrap;gap:12px;padding:12px;align-items:flex-start}
   #mapWrap{flex:1 1 560px;min-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
   #map{width:100%;height:auto;display:block;border-radius:6px}
-  #mapCap{font-size:12px;color:var(--ink2);text-align:center;padding-top:4px;max-width:52ch;margin:0 auto;line-height:1.7}
+  #mapCap{font-size:12px;color:var(--ink2);text-align:center;padding-top:6px;line-height:1.7}
+  #mapLegend{display:flex;flex-wrap:wrap;align-items:center;gap:5px 16px;
+    padding:10px 2px 0;font-size:12px;color:var(--ink2);justify-content:center}
+  #mapLegend .lgIt{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  #mapLegend .lgSw{width:16px;height:10px;border:1px solid rgba(90,80,60,.45);flex:0 0 auto}
+  #mapLegend .lgDot{border-radius:50%;background:var(--ink2);flex:0 0 auto}
+  #mapLegend .lgRule{width:20px;border-top:2px solid rgba(48,38,26,.72);flex:0 0 auto}
+  #mapLegend .lgRoad{width:18px;border-top:2px solid #9a7444;flex:0 0 auto}
+  #mapLegend .lgRing{width:11px;height:11px;border-radius:50%;border:2px solid #e0b44e;flex:0 0 auto}
+  #mapLegend .lgBar{width:1px;height:14px;background:var(--line,rgba(120,110,90,.4));flex:0 0 auto}
   #panel{flex:1 1 340px;min-width:320px;max-width:480px;display:flex;flex-direction:column;gap:10px;padding-bottom:92px}
   #panelL,#panelR{display:contents}
   @media (min-width:1500px){
@@ -491,6 +500,7 @@
   <main>
     <div id="mapWrap">
       <canvas id="map" width="900" height="560"></canvas>
+      <div id="mapLegend"></div>
       <div id="mapCap"></div>
       <details id="intelWrap">
         <summary><span class="intelTtl">諸國情報</span><span class="intelSum" id="intelSum"></span></summary>
@@ -572,7 +582,7 @@
 
 <script>
 'use strict';
-const BUILD = 'kk1';
+const BUILD = 'wa1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -11273,9 +11283,9 @@ function render(){
   if($('mapCap')){
     const live = S.rivals ? S.rivals.filter(f=>f.alive && pdist(f) <= 240) : [];
     const top = live.length ? live.reduce((a,b)=>a.koku>=b.koku?a:b) : null;
-    $('mapCap').textContent = `東海道略圖 — 全圖依居城位置與石高劃分於諸大名與眾(大名居城亦為源點),界線即各家領地之交;`+
-      `圓的大小 = 石高,▪ 為城砦三級以上,金環為自家從屬,朱點為姻親盟友。`+
-      (top ? `　現下${(REGIONS[S.region]||REGIONS.mikawa).name}近國最大者:${fname(top)} ${top.koku} 石。` : '');
+    renderMapLegend();
+    $('mapCap').textContent = `東海道略圖 — 全圖依居城位置與石高劃分於諸大名與眾。`+
+      (top ? `近國最大者:${fname(top)} ${top.koku} 石。` : '');
   }
   if($('resMeibo')) $('resMeibo').onclick = openMeibo;
   drawMap();
@@ -12098,8 +12108,16 @@ function doRonin(){
 // ---------- 地圖 ----------
 // ══════════ 地圖:勢力範圍 ══════════
 // 武田不可與玩家朱紅同色系(曾用#b04a3a,信濃的武田方色塊看起來像自家從屬)
-const LORDC = {imagawa:'#6a3f88', oda:'#a8842a', tokugawa:'#4a6a9a', takeda:'#7e2a49',
-               toyotomi:'#3a7a6a', saito:'#8aa878', nagao:'#31485e', player:'#a63c2e'};
+// 陣營色:先以伝統色定「疊在和紙上之後玩家實際看到的顏色」,再反解此處的來源色。
+// 舊表九色疊完全擠在 L*65~77、彩度 6~31,最壞一組 ΔE 只有 6.5——那是同一個顏色。
+// 今川 桔梗色・織田 黄土色・武田 蘇芳・長尾 浅葱色・齋藤 緑青・玩家 洗朱
+// 無主 利休鼠・德川 鉄紺・豐臣 菖蒲色;跨十種實際並存組合,最壞 ΔE = 23.6。
+const LORDC = {imagawa:'#1b2fa7', oda:'#aa8821', tokugawa:'#000030', takeda:'#7b0538',
+               toyotomi:'#7033af', saito:'#1b8456', nagao:'#0470a3', player:'#d84628'};
+const MAP_PAPER = '#e9e0c6';                    // 和紙 L*89
+const MAP_SEA   = '#35495e';                    // 藍鼠 L*31——與紙差五十八階,全圖這才有最暗處
+const MAP_HALO  = 'rgba(238,228,203,.92)';      // 字的襯底
+const MAP_INK   = '#2b2620';
 // 七國當代的實際領有者(此前色塊是寫死的地理色,只有標籤會隨史實變)
 function provOwners(){
   const done = id => S.histDone && S.histDone.includes(id);
@@ -12188,19 +12206,20 @@ function drawInfluence(c){
 function _drawInfluenceRaw(c){
   if(!S.rivals) return;
   // 全圖劃分:每一寸土地依「居城位置×石高」歸於某家——大名直轄亦為源點,無主之境盡屬最近之家
-  const CELL = 5, X0 = 20, X1 = 880, Y0 = 26, Y1 = 560, CUT = 0.02;
-  const NEUTRAL = '#5f6b4f';                      // 無主:與陸地底色(#d8cfa8)明顯區隔
+  // 網格 5→3:淡彩加濃之後,5px 的量化階梯在邊界上看得一清二楚(墨線描的正是那道階梯)
+  const CELL = 3, X0 = 20, X1 = 880, Y0 = 26, Y1 = 560, CUT = 0.02;
+  const NEUTRAL = '#878881';                      // 無主:利休鼠——彩度刻意最低,「無主」本就不該搶眼
   const act = S.rivals.filter(f=>f.alive).map(f=>({
     x:f.x, y:f.y, w:Math.sqrt(Math.max(1, f.koku)),
     camp: f.lord || 'none',
-    col: f.lord === 'player' ? '#a63c2e' : (LORDC[f.lord] || NEUTRAL)
+    col: f.lord === 'player' ? LORDC.player : (LORDC[f.lord] || NEUTRAL)
   }));
   { // 玩家:本據 + 歷來併吞的居館,各分一份石高——重心隨擴張而移
     const pp = playerPos();
     const hs = (S.holds || []).filter(h=>h && isFinite(h.x));
     const tw = 1.6 + hs.reduce((a,h)=>a+(h.w||1), 0);        // 本據佔 1.6 份
     const put = (x,y,share)=> act.push({x, y,
-      w: Math.sqrt(Math.max(1, S.kokudaka * share/tw)) * 1.05, camp:'player', col:'#a63c2e'});
+      w: Math.sqrt(Math.max(1, S.kokudaka * share/tw)) * 1.05, camp:'player', col:LORDC.player});
     put(pp.x, pp.y, 1.6);
     hs.forEach(h=> put(h.x, h.y, h.w||1));
   }
@@ -12219,22 +12238,39 @@ function _drawInfluenceRaw(c){
       }
       act.push({x, y, w: Math.sqrt(Math.max(1, L.demesne||3000)) * 1.1,
         camp: L.submitted ? 'player' : key,
-        col: L.submitted ? '#a63c2e' : (LORDC[key] || NEUTRAL)});
+        col: L.submitted ? LORDC.player : (LORDC[key] || NEUTRAL)});
     }
   }
   const NX = Math.ceil((X1-X0)/CELL), NY = Math.ceil((Y1-Y0)/CELL);
   const win = new Int16Array(NX*NY).fill(-1);
+  // 加權 Voronoi 是每格對每個源點求一次距離。網格加密到 3px 後,直算是 150 萬次,
+  // 手機上一季一頓。改為粗算再細修:先以 4 倍粗網格定局,內部大片同屬者直接繼承,
+  // 只有粗格鄰里意見不合處(即邊界一帶)才逐格精算——省下八成的功。
+  const owner = (cx, cy) => {
+    let bi = -1, bw = CUT;
+    for(let k=0; k<act.length; k++){
+      const a = act[k];
+      const dx = a.x-cx, dy = a.y-cy;            // Math.hypot 在這條內圈裡貴得離譜
+      const v = a.w / (Math.sqrt(dx*dx + dy*dy) + 45);
+      if(v > bw){ bw = v; bi = k; }
+    }
+    return bi;
+  };
+  const Q = 4, CX = Math.ceil(NX/Q), CY = Math.ceil(NY/Q);
+  const coarse = new Int16Array(CX*CY);
+  for(let jx=0; jx<CX; jx++) for(let jy=0; jy<CY; jy++)
+    coarse[jx*CY+jy] = owner(X0 + (jx*Q + Q/2)*CELL, Y0 + (jy*Q + Q/2)*CELL);
   for(let ix=0; ix<NX; ix++){
-    const cx = X0 + ix*CELL + CELL/2;
+    const cx = X0 + ix*CELL + CELL/2, jx = (ix/Q)|0;
     for(let iy=0; iy<NY; iy++){
-      const cy = Y0 + iy*CELL + CELL/2;
-      let bi = -1, bw = CUT;
-      for(let k=0; k<act.length; k++){
-        const a = act[k];
-        const v = a.w / (Math.hypot(a.x-cx, a.y-cy) + 45);
-        if(v > bw){ bw = v; bi = k; }
+      const jy = (iy/Q)|0, mine = coarse[jx*CY+jy];
+      let flat = true;
+      for(let a=-1; a<=1 && flat; a++) for(let b=-1; b<=1; b++){
+        const px = jx+a, py = jy+b;
+        if(px < 0 || py < 0 || px >= CX || py >= CY) continue;
+        if(coarse[px*CY+py] !== mine){ flat = false; break; }
       }
-      win[ix*NY+iy] = bi;
+      win[ix*NY+iy] = flat ? mine : owner(cx, Y0 + iy*CELL + CELL/2);
     }
   }
   // ── 淡彩:縮圖 → 平滑放大,得到暈染的邊緣而非階梯 ──
@@ -12259,11 +12295,11 @@ function _drawInfluenceRaw(c){
   const sc = soft.getContext('2d');
   sc.imageSmoothingEnabled = true;
   if(sc.imageSmoothingQuality) sc.imageSmoothingQuality = 'high';
-  try{ sc.filter = 'blur(7px)'; }catch(e){}   // 放大的同時柔化(自我 drawImage 不可靠)
+  try{ sc.filter = 'blur(6px)'; }catch(e){}   // 放大的同時柔化(自我 drawImage 不可靠)
   sc.drawImage(off, 0, 0, W2, H2);
   try{ sc.filter = 'none'; }catch(e){}
   c.save();
-  c.globalAlpha = 0.34;                            // 全圖著色後稍降透明度,底圖山川仍可辨
+  c.globalAlpha = 0.52;                            // 淡彩仍是淡彩,但濃到色與色分得開(見 LORDC 之註)
   c.drawImage(soft, X0, Y0, W2, H2);
   c.restore();
   // ── 墨線:眾與眾之間細線,陣營與陣營之間粗線(大名的勢力輪廓才浮得出來) ──
@@ -12288,7 +12324,70 @@ function _drawInfluenceRaw(c){
   c.strokeStyle = 'rgba(48,38,26,.62)'; c.lineWidth = 2.0; seg(true);    // 跨陣營:大名的邊境
   c.restore();
 }
+// 圖例:畫在畫布裡是點陣文字,還壓著地圖;改以 HTML 排在圖下,字銳利、可換行、不佔版面
+function renderMapLegend(){
+  const box = $('mapLegend'); if(!box || !S) return;
+  const PV = provStatus();
+  const camps = new Set();
+  (S.rivals||[]).forEach(f=>{ if(f.alive && f.lord && f.lord!=='player' && LORDC[f.lord]) camps.add(f.lord); });
+  Object.values(PV).forEach(p=>{ if(p.owner && p.owner!=='none' && p.owner!=='player' && LORDC[p.owner]) camps.add(p.owner); });
+  const sw = col => `<i class="lgSw" style="background:${col}"></i>`;
+  let h = `<span class="lgIt">${sw(LORDC.player)}${S.famName}家・從屬</span>`;
+  for(const k of ['imagawa','oda','tokugawa','takeda','saito','nagao','toyotomi'])
+    if(camps.has(k) && S.lords && S.lords[k] && S.lords[k].alive !== false)
+      h += `<span class="lgIt">${sw(LORDC[k])}${LORD_META[k].name}方</span>`;
+  h += `<span class="lgIt">${sw('#878881')}無主之眾</span>`;
+  h += `<span class="lgBar"></span>`;
+  h += `<span class="lgIt"><i class="lgDot" style="width:6px;height:6px"></i>`
+     + `<i class="lgDot" style="width:13px;height:13px"></i>圓的大小 = 石高</span>`;
+  h += `<span class="lgIt"><i class="lgRule"></i>陣營邊境</span>`;
+  h += `<span class="lgIt"><i class="lgRoad"></i>東海道・宿場</span>`;
+  h += `<span class="lgIt"><i class="lgRing"></i>自家從屬</span>`;
+  box.innerHTML = h;
+}
 const MAP_W = 900, MAP_H = 560;
+// ── 標籤避讓 ──────────────────────────────────────────────
+// 圖上五十餘個文字物件全部寫死在「圓的右側」,二十一家並立時必然疊字
+// (菅沼壓三河國名、小笠原與諏訪相黏、玩家石高與鄰家疊成讀不出的東西)。
+// 改為:高優先者先佔位,低優先者八方求位;求不到就退讓——先捨石高數字,
+// 再整個讓位只留圓點。寧可少一個名字,不要兩個名字疊在一起。
+const _lb = {box:[], item:[]};
+function lbReserve(x1,y1,x2,y2){ _lb.box.push({x1,y1,x2,y2}); }
+function lbAdd(it){ _lb.item.push(it); }
+function lbRun(c){
+  const hit = (a,b)=> !(a.x2 < b.x1 || b.x2 < a.x1 || a.y2 < b.y1 || b.y2 < a.y1);
+  const OFF = [[1,0],[-1,0],[0,-1],[0,1],[1,-1],[-1,-1],[1,1],[-1,1]];
+  let drawn = 0;
+  _lb.item.sort((p,q)=> p.pri - q.pri);
+  c.lineJoin = 'round';
+  for(const it of _lb.item){
+    c.font = it.font;
+    let got = null;
+    for(const txt of (it.alt ? [it.text, it.alt] : [it.text])){
+      const w = c.measureText(txt).width, h = it.size;
+      for(const [dx,dy] of OFF){
+        const ax = dx > 0 ? it.x + it.r + 4
+                 : dx < 0 ? it.x - it.r - 4 - w
+                 : it.x - w/2;
+        const ay = it.y + dy*(it.r + h*0.95) + h*0.36;
+        const b = {x1:ax-2, y1:ay-h, x2:ax+w+2, y2:ay+3};
+        if(b.x1 < 3 || b.x2 > MAP_W-3 || b.y1 < 3 || b.y2 > MAP_H-3) continue;
+        if(_lb.box.some(q=>hit(b,q))) continue;
+        got = {txt, ax, ay, b}; break;
+      }
+      if(got) break;
+    }
+    if(!got) continue;                       // 讓位:圓點仍在,名字這回不寫
+    _lb.box.push(got.b);
+    c.strokeStyle = MAP_HALO; c.lineWidth = 3.2;
+    c.strokeText(got.txt, got.ax, got.ay);
+    c.fillStyle = it.ink; c.fillText(got.txt, got.ax, got.ay);
+    drawn++;
+  }
+  const n = _lb.item.length;
+  _lb.box.length = 0; _lb.item.length = 0;
+  return {drawn, total:n};
+}
 function drawMap(){
   const cv = $('map'); if(!cv) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -12297,16 +12396,9 @@ function drawMap(){
   const c = cv.getContext('2d');
   c.setTransform(dpr, 0, 0, dpr, 0, 0);           // 之後全照 900×560 邏輯座標畫
   const W = MAP_W, H = MAP_H;
-  // 海(青海波紋)
-  c.fillStyle = '#729cb2';
+  // 海:整面壓暗(原本鋪滿的青海波磚,把海拉到與陸同明度,全圖遂無最暗處)
+  c.fillStyle = MAP_SEA;
   c.fillRect(0,0,W,H);
-  c.strokeStyle = 'rgba(255,255,255,0.16)'; c.lineWidth = 1.2;
-  for(let wy=310; wy<H+30; wy+=24){
-    for(let wx=((wy/24)%2)*22-20; wx<W+40; wx+=44){
-      c.beginPath(); c.arc(wx, wy, 15, Math.PI, 0); c.stroke();
-      c.beginPath(); c.arc(wx, wy, 9, Math.PI, 0); c.stroke();
-    }
-  }
   // 陸地(擬真海岸線:伊勢灣・知多/渥美半島・三河灣・濱名湖口・駿河灣・伊豆半島)
   const landTrace = (ctx)=>{
     ctx.moveTo(0,0); ctx.lineTo(W,0);
@@ -12338,9 +12430,28 @@ function drawMap(){
     ctx.lineTo(0,456);
     ctx.closePath();
   };
-  c.fillStyle = '#d8cfa8';
+  // 沿岸波紋:古地圖的做法——只在岸邊起波,遠海留白
+  c.save();
+  c.beginPath(); c.rect(0,0,W,H); landTrace(c); c.clip('evenodd');
+  for(let k=4; k>=1; k--){
+    c.strokeStyle = `rgba(196,214,228,${(0.052*k).toFixed(3)})`;
+    c.lineWidth = k*7; c.beginPath(); landTrace(c); c.stroke();
+  }
+  c.restore();
+  c.fillStyle = MAP_PAPER;
   c.beginPath(); landTrace(c); c.fill();
-  c.strokeStyle = '#9a8f6a'; c.lineWidth = 2; c.beginPath(); landTrace(c); c.stroke();
+  { // 和紙纖維(固定亂數,每次重畫都同一張紙)
+    const fr = mulberry32(20260912);
+    c.save(); c.beginPath(); landTrace(c); c.clip();
+    for(let i=0;i<760;i++){
+      const x = fr()*W, y = fr()*H, l = 2 + fr()*7, a = fr()*Math.PI;
+      c.strokeStyle = `rgba(150,136,104,${(0.05 + fr()*0.06).toFixed(3)})`;
+      c.lineWidth = 0.7;
+      c.beginPath(); c.moveTo(x,y); c.lineTo(x+Math.cos(a)*l, y+Math.sin(a)*l); c.stroke();
+    }
+    c.restore();
+  }
+  c.strokeStyle = '#6b6148'; c.lineWidth = 1.6; c.beginPath(); landTrace(c); c.stroke();
   // 以下勢力色塊・山岳・河川皆裁切於陸地內
   c.save();
   c.beginPath(); landTrace(c); c.clip();
@@ -12351,7 +12462,7 @@ function drawMap(){
     c.moveTo(pts[0][0], pts[0][1]);
     for(let i=1;i<pts.length;i++) c.lineTo(pts[i][0], pts[i][1]);
     c.closePath();
-    c.strokeStyle = 'rgba(90,80,55,.35)'; c.lineWidth = 1; c.setLineDash([6,4]);
+    c.strokeStyle = 'rgba(90,80,55,.30)'; c.lineWidth = 1; c.setLineDash([2,4]);
     c.stroke(); c.setLineDash([]);
   };
   // 勢力色塊——依「當代實際領有者」著色(此前是寫死的地理色,織田滅了尾張還是黃的)
@@ -12368,7 +12479,7 @@ function drawMap(){
   drawInfluence(c);
 
   // 大川(細淡,只畫下游,河口貼合海岸)
-  c.strokeStyle = 'rgba(96,142,168,0.35)'; c.lineWidth = 1.6; c.lineCap = 'round';
+  c.strokeStyle = 'rgba(74,110,134,0.42)'; c.lineWidth = 1.6; c.lineCap = 'round';
   const river = (pts)=>{
     c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
     for(let i=1;i<pts.length;i++) c.quadraticCurveTo(
@@ -12382,44 +12493,61 @@ function drawMap(){
   river([[651,240],[649,340],[652,432]]);             // 大井川(遠駿國境)
   river([[732,250],[726,330],[718,392]]);             // 富士川→駿河灣
 
-  // 山岳皴線(疏落幾筆即可)
-  c.strokeStyle = 'rgba(80,70,48,0.32)'; c.lineWidth = 1.5; c.lineJoin = 'round';
-  const mt = (x,y,s)=>{
-    c.beginPath(); c.moveTo(x-s,y); c.lineTo(x,y-s*1.15); c.lineTo(x+s,y); c.stroke();
-    c.beginPath(); c.moveTo(x, y-s*1.15); c.lineTo(x+s*0.35, y-s*0.45); c.stroke();
-  };
-  [[310,64],[478,72],[560,48],[690,58],[122,60],[832,86]].forEach(p=>mt(p[0],p[1],10));
-  [[812,308],[798,362]].forEach(p=>mt(p[0],p[1],7));
+  // 山岳皴筆:原本是同一個字形複製八次(讀起來是「∧∧∧」的符號噪音)。
+  // 改為沿脊線聚簇、一簇之內大小角度各異——山靠疏密講話,該空的地方就留白。
+  {
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    const SPINE = [[90,74],[150,58],[212,68],[276,52],[330,70],[392,56],[452,70],[512,54],
+                   [572,66],[634,52],[694,64],[752,80],[812,70],[858,92],
+                   [776,286],[796,318],[818,352]];
+    const mr = mulberry32(1545);
+    for(const [bx,by] of SPINE){
+      const n = 2 + Math.floor(mr()*3);
+      for(let i=0;i<n;i++){
+        const x = bx + (mr()-.5)*34, y = by + (mr()-.5)*17, sz = 6 + mr()*8;
+        c.strokeStyle = 'rgba(58,50,36,.42)'; c.lineWidth = 1 + mr()*1.1;
+        c.beginPath(); c.moveTo(x-sz, y);
+        c.quadraticCurveTo(x - sz*0.3, y - sz*1.25, x, y - sz*1.3);
+        c.quadraticCurveTo(x + sz*0.45, y - sz*1.1, x + sz, y);
+        c.stroke();
+        c.lineWidth = 0.8;
+        c.beginPath(); c.moveTo(x, y - sz*1.28);
+        c.lineTo(x + sz*(0.2 + mr()*0.3), y - sz*(0.3 + mr()*0.3)); c.stroke();
+      }
+    }
+  }
   c.restore();   // 解除陸地裁切
 
   // 濱名湖(小潟湖,貼海岸,今切口通海)
-  c.fillStyle = '#729cb2';
+  c.fillStyle = MAP_SEA;
   c.beginPath();
   c.ellipse(524, 456, 13, 11, 0, 0, 7);
   c.fill();
-  c.strokeStyle = 'rgba(122,111,84,.7)'; c.lineWidth = 1; c.stroke();
-  c.fillStyle = '#729cb2';
+  c.strokeStyle = '#6b6148'; c.lineWidth = 1; c.stroke();
+  c.fillStyle = MAP_SEA;
   c.fillRect(521, 462, 6, 10);   // 今切口(通海水道)
 
   // 富士山(小而精,駿河・甲斐之境)
-  c.fillStyle = '#efe9dc';
+  // 富士退成紙色——原本它與那頂純白雪冠是全圖最亮的兩個物件(L*92 與 100),
+  // 卻是純裝飾,比玩家自己的居城還搶眼。
+  c.fillStyle = '#cfc3a3';
   c.beginPath(); c.moveTo(744,158); c.lineTo(766,196); c.lineTo(722,196); c.closePath(); c.fill();
-  c.strokeStyle = 'rgba(120,105,80,.8)'; c.lineWidth = 1.2; c.stroke();
-  c.fillStyle = '#ffffff';
+  c.strokeStyle = 'rgba(90,80,60,.7)'; c.lineWidth = 1.2; c.stroke();
+  c.fillStyle = 'rgba(255,255,255,.62)';
   c.beginPath(); c.moveTo(744,158); c.lineTo(752,172);
   c.lineTo(747,169); c.lineTo(744,173); c.lineTo(740,169); c.lineTo(736,172);
   c.closePath(); c.fill();
 
-  // 標籤
-  c.fillStyle = '#2f271d';
-  c.font = 'bold 17px "Microsoft JhengHei",sans-serif';
+  // 標籤:國名最高優先,先畫先佔位(眾名與城名之後繞著它走)
   const label = (t,x,y,sub) => {
     c.lineJoin = 'round';
-    c.font = 'bold 18px "Noto Serif TC","PMingLiU",serif';
-    c.strokeStyle = 'rgba(246,239,221,0.85)'; c.lineWidth = 4;
-    c.strokeText(t,x,y); c.fillStyle = '#2f271d'; c.fillText(t,x,y);
+    c.font = 'bold 16px "Noto Serif TC","PMingLiU",serif';
+    const w = Math.max(c.measureText(t).width, sub ? 58 : 0);
+    lbReserve(x-4, y-16, x+w+4, y + (sub ? 21 : 5));
+    c.strokeStyle = MAP_HALO; c.lineWidth = 4;
+    c.strokeText(t,x,y); c.fillStyle = MAP_INK; c.fillText(t,x,y);
     if(sub){
-      c.font = '12px "Noto Serif TC","PMingLiU",serif'; c.lineWidth = 3;
+      c.font = '11px "Noto Serif TC","PMingLiU",serif'; c.lineWidth = 3;
       c.strokeText(sub,x,y+17); c.fillText(sub,x,y+17);
     }
   };
@@ -12431,17 +12559,27 @@ function drawMap(){
     for(const pk in LP) label(LN[pk], LP[pk][0], LP[pk][1], PV[pk].txt);
   }
   // 海・地物標籤
-  c.fillStyle = 'rgba(255,255,255,.85)';
-  c.font = '12px "Noto Serif TC","PMingLiU",serif';
-  c.fillText('伊勢灣',186,486);
-  c.fillText('三河灣',336,470);
-  c.fillText('遠州灘',520,516);
-  c.fillText('駿河灣',688,462);
-  c.font = '10px "Noto Serif TC","PMingLiU",serif';
-  c.fillText('知多',238,492); c.fillText('渥美',356,502);
-  c.fillStyle = 'rgba(60,50,35,.75)';
-  c.fillText('濱名湖',508,438); c.fillText('伊豆',794,472);
-  c.fillText('富士',730,212);
+  const seaLab = (t,x,y,sz)=>{
+    c.font = sz + 'px "Noto Serif TC","PMingLiU",serif';
+    lbReserve(x-2, y-sz, x + c.measureText(t).width + 2, y+3);
+    c.fillStyle = 'rgba(222,231,238,.88)'; c.fillText(t,x,y);
+  };
+  seaLab('伊勢灣',186,486,12); seaLab('三河灣',336,470,12);
+  seaLab('遠州灘',520,516,12); seaLab('駿河灣',688,462,12);
+  seaLab('知多',238,492,10);   seaLab('渥美',356,502,10);
+  const landLab = (t,x,y)=>{
+    c.font = '11px "Noto Serif TC","PMingLiU",serif';
+    lbReserve(x-2, y-11, x + c.measureText(t).width + 2, y+3);
+    c.lineJoin='round'; c.strokeStyle = MAP_HALO; c.lineWidth = 2.6;
+    c.strokeText(t,x,y); c.fillStyle = 'rgba(70,60,44,.85)'; c.fillText(t,x,y);
+  };
+  landLab('濱名湖',508,438); landLab('伊豆',794,472); landLab('富士',730,212);
+  // 家紋與玩家本據的位置是寫死的,先替它們佔位,眾名才不會壓上去
+  for(const [mx,my] of [[185,268],[545,218],[700,246],[846,56],[372,172],[118,78]])
+    lbReserve(mx-15, my-15, mx+15, my+15);
+  { const pp = playerPos();
+    lbReserve(pp.x-34, pp.y-36, pp.x+36, pp.y+34); }
+  lbReserve(W-63, 7, W-9, 63);          // 季節朱印
 
   // 主要城
   const castle = (x,y,t,own)=>{  // 天守剪影(依歸屬著色)
@@ -12450,13 +12588,11 @@ function drawMap(){
     c.beginPath(); c.moveTo(x-6, y-3); c.lineTo(x, y-9); c.lineTo(x+6, y-3); c.closePath(); c.fill();
     c.fillRect(x-2, y-8, 4, 2);
     if(S.castleLord && CASTLES[S.castleLord] && CASTLES[S.castleLord].name === t){
-      c.strokeStyle = '#a63c2e'; c.lineWidth = 1.6;
+      c.strokeStyle = LORDC.player; c.lineWidth = 1.6;
       c.beginPath(); c.arc(x, y-3, 10, 0, 7); c.stroke();
     }
-    c.font = '11px "Noto Serif TC","PMingLiU",serif'; c.lineJoin = 'round';
-    c.strokeStyle = 'rgba(246,239,221,0.8)'; c.lineWidth = 3;
-    c.strokeText(t, x+8, y+4);
-    c.fillStyle = '#3a2f24'; c.fillText(t, x+8, y+4);
+    lbAdd({x, y:y-3, r:8, text:t, size:11.5, pri:1, ink:MAP_INK,
+           font:'11.5px "Noto Serif TC","PMingLiU",serif'});
   };
   { const PROVKEY = {'尾張':'owari','三河':'mikawa','遠江':'totomi','駿河':'suruga','甲斐':'kai','美濃':'mino','信濃':'shinano'};
     for(const id in CASTLES){
@@ -12471,11 +12607,16 @@ function drawMap(){
     }
   }
 
-  // 東海道(街道)
-  c.strokeStyle = 'rgba(122,90,58,0.7)'; c.lineWidth = 2; c.setLineDash([7,5]);
+  // 東海道:原本是虛線,與國界的虛線粗細只差 1px,圖上根本分不出來。改實線加宿場點。
+  c.strokeStyle = '#9a7444'; c.lineWidth = 1.8; c.lineCap = 'round';
   c.beginPath(); c.moveTo(150,332); c.quadraticCurveTo(240,362,290,374);
   c.quadraticCurveTo(340,368,362,352); c.quadraticCurveTo(460,362,560,352);
-  c.quadraticCurveTo(650,332,728,304); c.stroke(); c.setLineDash([]);
+  c.quadraticCurveTo(650,332,728,304); c.stroke();
+  for(const [sx,sy] of [[150,332],[290,374],[362,352],[560,352],[728,304]]){
+    c.fillStyle = '#9a7444';
+    c.beginPath(); c.arc(sx, sy, 2.6, 0, 7); c.fill();
+    c.strokeStyle = MAP_PAPER; c.lineWidth = 1.1; c.stroke();
+  }
 
   // 三河國人眾居館
   if(S.rivals){
@@ -12501,11 +12642,10 @@ function drawMap(){
         c.fillStyle = '#3a2f24';
         c.fillRect(f.x-2, f.y-r-6, 4, 4);
       }
-      const tag = `${f.name} ${f.koku}`;
-      c.strokeStyle = 'rgba(246,239,221,0.85)'; c.lineWidth = 3;
-      c.strokeText(tag, f.x+r+2, f.y+4);
-      c.fillStyle = '#4a3c26';
-      c.fillText(tag, f.x+r+2, f.y+4);
+      // 石高的大小圓已經講過一次,文字裡再寫一次是重複——寬處仍寫,擠處先捨數字
+      lbAdd({x:f.x, y:f.y, r, text:`${f.name} ${f.koku}`, alt:f.name,
+             size:11.5, pri:2, ink:'#3b3327',
+             font:'11.5px "Noto Serif TC","PMingLiU",serif'});
     }
   }
   // 大名家紋
@@ -12528,49 +12668,18 @@ function drawMap(){
   c.strokeStyle = clanCol(); c.lineWidth = 2.2;   // 五眾代表色
   c.beginPath(); c.arc(px, py, 13.5, 0, 7); c.stroke();
   KAMON[S.kamon||0].draw(c, px, py, 9, '#7d2f24', '#fff');
-  c.fillStyle = '#7d2f24';
+  c.fillStyle = '#8d2f1c';
   c.font = 'bold 13px "Noto Serif TC","PMingLiU",serif';
-  c.lineJoin = 'round'; c.strokeStyle = 'rgba(246,239,221,0.9)'; c.lineWidth = 3.5;
+  c.lineJoin = 'round'; c.strokeStyle = MAP_HALO; c.lineWidth = 3.8;
   c.strokeText(`${S.famName}家`, px-14, py-21);
   c.fillText(`${S.famName}家`, px-14, py-21);
   c.font = '10px "Noto Serif TC","PMingLiU",serif';
   c.lineWidth = 3; c.strokeText(`${S.kokudaka}石`, px-12, py+26);
   c.fillStyle = '#5a4632'; c.fillText(`${S.kokudaka}石`, px-12, py+26);
+  // ── 圖記畫齊了,這才統一放字 ──
+  lbRun(c);
 
-  // ── 圖例(左下角):只列圖上實際存在的陣營(此前寫死織田/今川,武田齋藤有色塊卻無圖例) ──
-  {
-    const camps = new Set();
-    S.rivals.filter(f=>f.alive && f.lord && f.lord!=='player' && LORDC[f.lord]).forEach(f=>camps.add(f.lord));
-    Object.values(PV).forEach(p=>{ if(p.owner && p.owner!=='none' && p.owner!=='player' && LORDC[p.owner]) camps.add(p.owner); });
-    const rows = [['#a63c2e', `${S.famName}家・從屬`]];
-    for(const k of ['imagawa','oda','tokugawa','takeda','saito','nagao','toyotomi']){
-      if(camps.has(k) && S.lords && S.lords[k] && S.lords[k].alive !== false)
-        rows.push([LORDC[k], `${LORD_META[k].name}方`]);
-    }
-    rows.push(['#5f6b4f', '無主之眾']);
-    const bh = rows.length*13 + 40;
-    const lx = 14, ly = H - bh - 8;
-    c.fillStyle = 'rgba(246,239,221,0.90)';
-    c.strokeStyle = 'rgba(122,111,84,.6)'; c.lineWidth = 1;
-    c.beginPath(); c.roundRect ? c.roundRect(lx-6, ly-14, 172, bh+8, 5) : c.rect(lx-6, ly-14, 172, bh+8);
-    c.fill(); c.stroke();
-    c.font = 'bold 11px "Noto Serif TC","PMingLiU",serif';
-    c.fillStyle = '#4a3c26'; c.fillText('勢力範圍', lx, ly);
-    c.font = '10px "Noto Serif TC","PMingLiU",serif';
-    rows.forEach(([col, txt], i)=>{
-      c.fillStyle = col; c.globalAlpha = .55;
-      c.fillRect(lx, ly+7+i*13, 13, 9); c.globalAlpha = 1;
-      c.strokeStyle = 'rgba(58,47,36,.45)'; c.lineWidth = .8;
-      c.strokeRect(lx, ly+7+i*13, 13, 9);
-      c.fillStyle = '#4a3c26'; c.fillText(txt, lx+18, ly+15+i*13);
-    });
-    const ey = ly + 7 + rows.length*13 + 9;
-    c.fillStyle = '#4a3c26';
-    c.fillText('◯大小 = 石高', lx, ey);
-    c.strokeStyle = 'rgba(48,38,26,.62)'; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(lx+74, ey-3); c.lineTo(lx+88, ey-3); c.stroke();
-    c.fillText('陣營邊境', lx+92, ey);
-  }
+  // 圖例已移出畫布(見 #mapLegend)——它原本佔著知多半島一塊 172×130,而且是點陣文字
   // 四季の色:整幅略圖染上時節的呼吸(極淡,不奪勢力色)
   {
     const tints = ['rgba(214,140,160,.05)','rgba(90,140,70,.05)','rgba(200,130,50,.06)','rgba(225,230,240,.10)'];
