@@ -134,6 +134,15 @@
   .retainer select{flex:1 0 100%;margin-top:1px}
   .cardTitle{font-size:14px;font-weight:bold;border-left:4px solid var(--accent);padding-left:8px;margin-bottom:8px}
   #taskHint{font-size:12px;color:var(--ink2);min-height:32px;margin-top:6px;line-height:1.5}
+  .gechiRow{display:flex;flex-wrap:wrap;align-items:center;gap:3px 7px;padding:6px 3px;border-bottom:1px dashed var(--line)}
+  .gechiRow:last-child{border-bottom:none}
+  .gechiRow .gname{min-width:80px;font-weight:bold;font-size:13px}
+  .gechiRow .gsub{font-size:11px;color:var(--ink2);flex:1 1 100%;margin-top:-2px}
+  .gechiRow select{font-size:12px;padding:2px 4px;max-width:132px}
+  .gechiRow button{font-size:12px;padding:3px 9px;min-height:0}
+  .gObey{font-size:11px;font-weight:bold}
+  .gObey.hi{color:var(--accent2)} .gObey.mid{color:#9a7b30} .gObey.lo{color:var(--accent)}
+  #gechiHint{font-size:12px;color:var(--ink2);min-height:30px;margin-top:6px;line-height:1.5}
   #seasonBrief{font-size:12px;line-height:1.55;margin:2px 0 7px;padding:5px 8px;
     background:rgba(122,94,58,.07);border-left:3px solid var(--accent2);border-radius:0 5px 5px 0}
   #seasonBrief .sbWarn{color:var(--accent);font-weight:bold}
@@ -463,6 +472,7 @@
         <div id="retainerList"></div>
         <div id="taskHint">選擇指令以查看說明。</div>
       </div>
+      <div class="card" id="gechiBox" style="display:none"></div>
       <div class="card" id="familyBox"></div>
       </div>
       <div id="panelR">
@@ -530,7 +540,7 @@
 
 <script>
 'use strict';
-const BUILD = 'p1a';
+const BUILD = 'p2a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -3149,12 +3159,28 @@ function simLords(lines){
       }
     }
     // ── 恩賞與懲戒:自家從屬眾的管理 ──
+    // ── 下知:大名之政在使人(從屬各有評定,順其志者用命) ──
     const vs = S.rivals.filter(f=>f.alive && f.lord===key);
-    if(vs.length && Math.random() < 0.3){
+    if(vs.length && Math.random() < 0.55){
       const v = pick1(vs);
-      if(Math.random() < 0.7){ v.koku += ri(v.koku*0.04); }        // 加增
-      else { v.koku = Math.max(120, v.koku - ri(v.koku*0.05));      // 削封
-        lines.push(`${LORD_META[key].name}家以怠慢之罪削${fname(v)}之封。`); }
+      const lt = v.ltrust ?? 60;
+      const roll = Math.random();
+      if(lt < 45 || roll < 0.2){                                    // 離心者先賞,買其心
+        v.koku += ri(v.koku*0.04);
+        v.ltrust = clamp(lt + 8, 0, 100);
+        if(Math.random() < 0.4) lines.push(`${LORD_META[key].name}家加增${fname(v)}之封,以結其心。`);
+      }else if(roll < 0.62){                                        // 開墾令:其地厚則主家厚
+        const g = ri(12 + v.koku*0.01);
+        v.koku += g; v.ltrust = clamp(lt - 1, 0, 100);
+      }else if(roll < 0.88){                                        // 課役:主家直轄領受益,從屬離心
+        const g = ri(v.koku*0.03);
+        L.demesne += g; v.ltrust = clamp(lt - 5, 0, 100);
+        if(Math.random() < 0.3) lines.push(`${LORD_META[key].name}家課${fname(v)}以軍役錢糧 ${g} 石之資。`);
+      }else{                                                        // 削封:怠慢者懲之
+        v.koku = Math.max(120, v.koku - ri(v.koku*0.05));
+        v.ltrust = clamp(lt - 9, 0, 100);
+        lines.push(`${LORD_META[key].name}家以怠慢之罪削${fname(v)}之封(其心益離)。`);
+      }
     }
   }
   // ── 大名間外交:弱者相結以抗最強 ──
@@ -4698,6 +4724,165 @@ function grantKani(lv, how){
 }
 // 玩家的從屬眾
 const myVassals = () => (S.rivals||[]).filter(f=>f.alive && f.lord==='player');
+// ══════════ 下知(げち):大名之政不在躬親,而在使人 ══════════
+// 威令=每季可發的令數(官位・家老・取次奉行所繫);從屬各有評定,順其志則用命,逆其志則陽奉陰違
+function gechiCap(){
+  const karo = S.retainers.filter(r=>!r.spare && (r.rank||0) >= 3).length;
+  const tori = S.retainers.some(r=>!r.spare && r.task === 'toritsugi') ? 1 : 0;
+  return clamp(2 + (S.kani||0) + karo + tori, 1, 6);
+}
+function gechiUsed(){
+  const g = S.gechi;
+  return (g && g.y === S.year && g.s === S.season) ? (g.used||0) : 0;
+}
+const gechiLeft = () => Math.max(0, gechiCap() - gechiUsed());
+function gechiSpend(n){
+  if(!S.gechi || S.gechi.y !== S.year || S.gechi.s !== S.season) S.gechi = {y:S.year, s:S.season, used:0};
+  S.gechi.used += n;
+}
+function gechiYearN(f){ return (f._gechiY === S.year) ? (f._gechiN||0) : 0; }
+function gechiBump(f){
+  if(f._gechiY !== S.year){ f._gechiY = S.year; f._gechiN = 0; }
+  f._gechiN = (f._gechiN||0) + 1;
+}
+// 征伐令的對象:其鄰家中最值得取者(不及自家旗下)
+function gechiFoe(f){
+  const nb = neighborsOf(f).filter(x=>x.alive && x.lord !== 'player' && x !== f
+    && !(f.allies||[]).includes(x.id) && x.id !== f.marrTo);
+  if(!nb.length) return null;
+  let best = null, bv = 0;
+  for(const x of nb){ const v = rPreyScore(f, x) || (x.koku * 0.1); if(v > bv){ bv = v; best = x; } }
+  return best || nb[0];
+}
+const GECHI = {
+  kaikon:  {name:'開墾令', icon:'🌾', cost:1, fit:['fukoku'],
+            desc: f => `命其墾田:石高 +${ri(15 + f.koku*0.012)}(其地日厚,年貢自豐)`},
+  hyoro:   {name:'兵糧供出', icon:'🍚', cost:1, fit:['fukoku'],
+            desc: f => `徵其米:兵糧 +${ri(f.koku*0.04)} 石(信心 -3)`},
+  gunyaku: {name:'軍役召集', icon:'⚔', cost:1, fit:['kyohei','heidon'],
+            desc: f => `徵其兵 ${ri(rSol(f)*0.25)} 入我軍(信心 -3;其兵歲歲可復)`},
+  kenkin:  {name:'獻金令', icon:'💰', cost:1, fit:null, persona:{'商業':14,'名門':-8,'武斷':-10},
+            desc: f => `課其財:錢 +${ri((f.money||0)*0.35 + f.koku*0.02)} 貫(信心 -7・關係 -6)`},
+  seibatsu:{name:'征伐令', icon:'🔥', cost:2, fit:['heidon','kyohei'], persona:{'武斷':16,'海賊':12,'保守':-14,'門徒':-18},
+            desc: f => { const t = gechiFoe(f); return t ? `命其伐${fname(t)}(來春見真章;侵略之名 +6)` : '四鄰無可伐者'; }},
+  kazou:   {name:'加增(恩賞)', icon:'🎁', cost:0, fit:null, gift:true,
+            desc: f => `割我 ${ri(Math.max(40, S.kokudaka*0.02))} 石與之:信心 +12・關係 +10`}
+};
+// 順從度:信心為本,關係恩義為輔,合其評定則用命——庸主連自家從屬都指使不動
+function gechiObey(f, key){
+  const G = GECHI[key]; if(!G) return 0;
+  const fit = G.fit && f.plan && G.fit.includes(f.plan.type);
+  let sc = 30 + (f.ltrust ?? 60)*0.32 + (f.rel||0)*0.15 + Math.max(0, f.on||0)*0.10
+         + Math.min(S.prestige, 150)*0.05 + (S.kani||0)*3
+         + (fit ? 18 : (G.fit ? -14 : 0))
+         + ((G.persona && G.persona[f.persona]) || 0)
+         - gechiYearN(f)*11;   // 使民以時:一年之內屢下知,人心自厭
+  if(G.gift) sc = 100;                       // 恩賞豈有不受之理
+  return clamp(ri(sc), 0, 100);
+}
+const gechiLevel = o => o >= 70 ? 'full' : o >= 42 ? 'half' : 'refuse';
+function doGechi(f, key){
+  const G = GECHI[key]; if(!G || !f || f.lord !== 'player') return;
+  if(G.cost > gechiLeft()){ log(`威令不足——本季尚能下知 ${gechiLeft()} 道。`,'bad'); return; }
+  if(key === 'seibatsu' && !gechiFoe(f)){ log(`${fname(f)}四鄰無可伐者。`,'bad'); return; }
+  if(key === 'kazou'){
+    const give = ri(Math.max(40, S.kokudaka*0.02));
+    if(S.kokudaka - give < 200){ log('自家領地已薄,無地可封。','bad'); return; }
+    S.kokudaka -= give; f.koku += give;
+    f.ltrust = clamp((f.ltrust ?? 60) + 12, 0, 100);
+    f.rel = clamp(f.rel + 10, -100, 100);
+    addOn(f, 8);
+    log(`🎁 割 ${give} 石加增${fname(f)}——恩賞既明,其心愈固(信心 +12・關係 +10)。`,'good');
+    save(); render(); return;
+  }
+  const obey = gechiObey(f, key), lv = gechiLevel(obey);
+  gechiSpend(G.cost); gechiBump(f);
+  const m = lv === 'full' ? 1 : lv === 'half' ? 0.45 : 0;
+  if(lv === 'refuse'){
+    f.ltrust = clamp((f.ltrust ?? 60) - 4, 0, 100);
+    log(`▼ ${fname(f)}陽奉陰違,竟不奉${G.name}——「本家自有本家的難處。」(信心 -4;威令空擲)`,'bad');
+    save(); render(); return;
+  }
+  const tag = lv === 'full' ? '' : '(僅奉行其半)';
+  switch(key){
+    case 'kaikon': {
+      const g = ri((15 + f.koku*0.012) * m);
+      f.koku += g; f.ltrust = clamp((f.ltrust ?? 60) - 1, 0, 100);
+      log(`🌾 ${fname(f)}奉開墾令${tag}——其地 +${g} 石(現 ${f.koku})。`, 'good'); break; }
+    case 'hyoro': {
+      const g = ri(f.koku*0.04 * m);
+      S.rice += g; f.ltrust = clamp((f.ltrust ?? 60) - 3, 0, 100);
+      log(`🍚 ${fname(f)}輸兵糧 ${g} 石入倉${tag}(信心 -3)。`, 'good'); break; }
+    case 'gunyaku': {
+      const n = ri(rSol(f)*0.25 * m);
+      if(n > 0){ armySync(); f.sol = Math.max(0, f.sol - n); S.army.ashigaru += n; S.soldiers = armyTotal(S.army); }
+      f.ltrust = clamp((f.ltrust ?? 60) - 3, 0, 100);
+      log(`⚔ ${fname(f)}應軍役,遣兵 ${n} 至${tag}(我軍 ${S.soldiers};其兵歲歲可復)。`, 'good'); break; }
+    case 'kenkin': {
+      const g = ri(((f.money||0)*0.35 + f.koku*0.02) * m);
+      S.money += g; f.money = Math.max(0, (f.money||0) - g);
+      f.ltrust = clamp((f.ltrust ?? 60) - 7, 0, 100);
+      f.rel = clamp(f.rel - 6, -100, 100);
+      if(hasKakun('minpon')) violateKakun('橫徵暴斂於從屬');
+      log(`💰 ${fname(f)}獻金 ${g} 貫${tag}(信心 -7・關係 -6)。`); break; }
+    case 'seibatsu': {
+      const t = gechiFoe(f);
+      if(t && !(S.rumors||[]).some(r=>r.who===f.id)){
+        pushRumor({who:f.id, kind:'invade', target:t.id, at:S.year+1, byLord:true});
+        addAggression(6);
+        if(t.lord && t.lord !== 'player' && S.lords[t.lord]) addFavor(S.lords[t.lord], -(12));
+        f.ltrust = clamp((f.ltrust ?? 60) - 4, 0, 100);
+        log(`🔥 ${fname(f)}奉征伐令,兵指${fname(t)}${tag}——來春見真章(侵略之名 +6)。`, 'bad');
+      }else log(`${fname(f)}已有兵事在身,征伐令且緩。`);
+      break; }
+  }
+  save(); render();
+}
+function renderGechi(){
+  const box = $('gechiBox'); if(!box) return;
+  const mine = myVassals();
+  if(!mine.length || S.gameOver){ box.style.display = 'none'; return; }
+  box.style.display = '';
+  const left = gechiLeft(), cap = gechiCap();
+  let h = `<div class="cardTitle">下知(威令 <b style="color:${left?'var(--accent2)':'var(--accent)'}">${left}</b>/${cap})`+
+    `<span class="dim" style="font-weight:normal;font-size:12px">　順其評定則用命,逆其志則陽奉陰違</span></div>`;
+  mine.forEach((f, i)=>{
+    const lt = f.ltrust ?? 60;
+    const keys = Object.keys(GECHI);
+    const sel = `<select id="gsel_${i}">` + keys.map(k=>{
+      const G = GECHI[k];
+      return `<option value="${k}">${G.icon} ${G.name}${G.cost?`(${G.cost})`:'(恩)'}</option>`;
+    }).join('') + `</select>`;
+    h += `<div class="gechiRow"><span class="gname">${fname(f)}</span>`+
+      `<span class="dim" style="font-size:11px">${f.koku}石・兵${rSol(f)}</span>`+
+      `<span class="${lt<40?'loyLow':''}" style="font-size:11px">信${lt}</span>`+
+      `<span style="color:var(--accent2);font-size:11px">📋${planLabel(f)}</span>`+
+      sel + `<button class="ghost" id="gbtn_${i}">下知</button>`+
+      `<span class="gObey" id="gobey_${i}"></span>`+
+      `<span class="gsub" id="gdesc_${i}"></span></div>`;
+  });
+  h += `<div id="gechiHint">擇一家、擇一令——威令有限,恩賞不費威令。</div>`;
+  box.innerHTML = h;
+  mine.forEach((f, i)=>{
+    const sel = $('gsel_'+i), btn = $('gbtn_'+i);
+    const upd = ()=>{
+      const k = sel.value, G = GECHI[k];
+      const o = gechiObey(f, k), lv = gechiLevel(o);
+      const oe = $('gobey_'+i);
+      if(oe){ oe.textContent = G.gift ? '恩賞' : `順從 ${o}`;
+        oe.className = 'gObey ' + (G.gift ? 'hi' : lv==='full' ? 'hi' : lv==='half' ? 'mid' : 'lo'); }
+      const de = $('gdesc_'+i);
+      if(de) de.textContent = G.desc(f) + (G.gift ? '' :
+        lv==='full' ? '　→ 必能用命' : lv==='half' ? '　→ 恐僅奉行其半' : '　→ 恐遭推託(信心再挫)');
+      const he = $('gechiHint');
+      if(he) he.textContent = `${G.icon} ${G.name}:${G.desc(f)}` +
+        (G.fit ? `　(其評定為「${planLabel(f)}」,此令${(f.plan && G.fit.includes(f.plan.type))?'正合其志':'非其所欲'})` : '');
+    };
+    if(sel){ sel.onchange = upd; sel.onfocus = upd; }
+    if(btn) btn.onclick = ()=>{ doGechi(f, sel.value); };
+    upd();
+  });
+}
 const playerPower = () => ri((S.kokudaka
   + myVassals().reduce((a,f)=>a + f.koku*(KIND_MIL[f.clanKind]||1), 0)
   + (S.lords ? Object.keys(S.lords).filter(k=>k!=='player' && S.lords[k].submitted && S.lords[k].alive!==false)
@@ -10429,6 +10614,7 @@ const INTRO_TIPS = [
  ['gonaisho', /御內書/,        '御內書:京都幕府的文書。獻金買名望,或請幕府調停大名之戰。'],
  ['gungi',    /國戰軍議/,      '軍議:選大將、手動調四兵種數量(可少帶省糧),戰力數字即時可見——兵種與大將專精相合,戰力方能盡出。'],
  ['gunhyo',   /軍評定——/,      '軍評定:軍師三案各有勝算與損兵,數字是軍師「所見」——智略愈高愈準,庸才會看走眼。選案後可再調兵。'],
+ ['gechi',    /下知/,          '下知:從屬眾各有評定方針——順其志者欣然用命,逆其志者陽奉陰違。威令每季有限(官位・家老・取次奉行可增),恩賞(加增)則不費威令。'],
  ['fbsai',    /布陣調整/,      '布陣:表頭「殘」為各兵種餘額,調畢即開戰。開戰後全軍自動進退,士氣轉折時你有唯一一次采配——按鈕在下方行動列。'],
  ['fujin',    /布陣——/,        '布陣:先鋒攻高受損亦高;本陣崩則全軍潰;殿不參戰,可由采配投入。'],
  ['shokaku',  /昇格/,          '昇格:五眾各有成為大名之路,條件湊齊,亂世的門就開了。'],
@@ -10673,6 +10859,7 @@ function render(){
     }
   }
   renderFamily();
+  renderGechi();
   renderRivals();
   renderLords();
   // 年貢率
