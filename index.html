@@ -90,6 +90,9 @@
     #actionBar{grid-column:1/-1}
   }
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .sktotal{font-family:var(--serif);font-size:14px;text-align:center;padding:6px 8px;margin-bottom:8px;
+    border:1px solid var(--line);border-radius:8px;background:var(--paper2);line-height:1.6}
+  .sktotal .dim{font-size:11px}
   .groupTag{font-size:11px;color:var(--ink2);letter-spacing:5px;text-align:center;margin:3px 0 -3px;font-family:var(--serif)}
   /* 諸國情報:置於地圖之下,預設收合——番付與大名情勢是「查閱」而非「每季必看」 */
   #intelWrap{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
@@ -569,7 +572,7 @@
 
 <script>
 'use strict';
-const BUILD = 'lay2';
+const BUILD = 'bg1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -750,6 +753,7 @@ function newState(famName, kamon, clan, mode, region, scen){
     rice:300, money:50, pop:400, soldiers:20, prestige:10, minshin:60,
     kokudaka:500,       // 石高(領地標準收穫量)
     suiri:0,            // 水利等級(每級收穫+5%)
+    bugei:0, skBugei:{},// 武藝等級(練兵所得;與水利・商路共用總上限 30)
     tradeLv:0,          // 商路等級(經商收入+20%/級)
     farmWork:0,         // 本年農務累積(收穫加成%)
     taxRate:0.4,
@@ -1420,6 +1424,10 @@ function migrate(s){
       }
     }
   }
+  { // 武藝樹:舊檔補欄位
+    if(s.bugei == null) s.bugei = 0;
+    if(!s.skBugei) s.skBugei = {};
+  }
   { // 家風特化欄位補齊:舊檔以石高反推已過里程碑(不補發,免讀檔即全境暴增)
     for(const f of (s.rivals||[])){
       if(f.devN == null){ f.dev = f.dev || {}; f.devN = [800,1500,2500].filter(m=>(f.koku||0) >= m).length; }
@@ -1787,6 +1795,16 @@ const SKILLS = {
     shuun:   {t:3, name:'舟運堀川',   max:2, desc:'買米牙錢 -0.06/級;圍城日糧 -8%/級'},
     nimou:   {t:3, name:'二毛作',     max:2, desc:'歲末人丁 +0.5%/級、石高自然微增'}
   },
+  bugei: {
+    yarifusuma:{t:1, name:'槍衾',     max:3, desc:'足輕受「固守」之令時,防禦 +5%/級'},
+    yumigumi:  {t:1, name:'弓組',     max:3, desc:'弓箭齊射威力 +4%/級'},
+    choren:    {t:1, name:'調練',     max:3, desc:'練兵所得兵員 +12%/級'},
+    kiba:      {t:2, name:'騎馬衝鋒', max:3, desc:'騎馬受「突擊」之令時,攻勢 +6%/級'},
+    teppogumi: {t:2, name:'鐵砲組',   max:3, desc:'鐵砲威力 +7%/級;雨天衰減減半'},
+    jindate:   {t:2, name:'陣立',     max:3, desc:'全軍基礎士氣 +2/級(野戰・盤上・攻城皆然)'},
+    gunbai:    {t:3, name:'軍配',     max:2, desc:'軍師所見之誤差 -25%/級——家傳軍配之術,補其智之不逮'},
+    futaiten:  {t:3, name:'不退轉',   max:2, desc:'友軍崩潰的士氣衝擊 -30%/級;自軍潰散門檻下降'}
+  },
   trade: {
     bashaku: {t:1, name:'馬借・問屋', max:3, desc:'經商・廻船獲利 +8%/級'},
     komeya:  {t:1, name:'米問屋直取引', max:3, desc:'賣米價 +4%/級,買米牙錢 -0.05/級'},
@@ -1798,12 +1816,19 @@ const SKILLS = {
     teppoya: {t:3, name:'鐵砲問屋',   max:2, desc:'歲末半價供銃補足鐵砲(每級上限+10挺/年)'}
   }
 };
-const skR = (tree, key) => (((tree==='suiri' ? S.skSuiri : S.skTrade) || {})[key]) || 0;
+const SK_TOTAL_CAP = 30;                                   // 三樹共用的修練總上限——內政與武藝必須取捨
+const skBook = tree => tree==='suiri' ? (S.skSuiri = S.skSuiri || {})
+                     : tree==='trade' ? (S.skTrade = S.skTrade || {})
+                     : (S.skBugei = S.skBugei || {});
+const skLv = tree => (tree==='suiri' ? (S.suiri||0) : tree==='trade' ? (S.tradeLv||0) : (S.bugei||0));
+const skTotalLv = () => (S.suiri||0) + (S.tradeLv||0) + (S.bugei||0);
+const skCapLeft = () => Math.max(0, SK_TOTAL_CAP - skTotalLv());
+const skR = (tree, key) => ((skBook(tree))[key]) || 0;
 const skSpent = (tree, t) => {
-  const sk = (tree==='suiri' ? S.skSuiri : S.skTrade) || {};
+  const sk = skBook(tree);
   return Object.keys(sk).reduce((a,k)=> a + ((SKILLS[tree][k] && SKILLS[tree][k].t === t) ? sk[k] : 0), 0);
 };
-const skUnspent = tree => Math.max(0, (tree==='suiri' ? (S.suiri||0) : (S.tradeLv||0)) - skSpent(tree,1) - skSpent(tree,2) - skSpent(tree,3));
+const skUnspent = tree => Math.max(0, skLv(tree) - skSpent(tree,1) - skSpent(tree,2) - skSpent(tree,3));
 const skTierOpen = (tree, t) => t === 1 ? true : t === 2 ? skSpent(tree,1) >= 5 : skSpent(tree,2) >= 5;
 function skPickModal(tree){ skView(); }
 const SK_TIER = ['初傳', '中傳', '奧傳'];
@@ -1815,10 +1840,11 @@ function skNodeHtml(tree, key, d){
   return `<div class="sknode ${cls}"${can ? ` onclick="skAlloc('${tree}','${key}')" title="點擊修習"` : ''}>` +
     `<b>${d.name}</b><span class="skpip">${pips}</span><small>${d.desc}</small></div>`;
 }
+const SK_LABEL = {suiri:'🌊 治水', trade:'🛤 商政', bugei:'⚔ 武藝'};
 function skTreeHtml(tree){
-  const lv = tree === 'suiri' ? (S.suiri||0) : (S.tradeLv||0);
+  const lv = skLv(tree);
   const un = skUnspent(tree);
-  let h = `<div class="sktitle">${tree === 'suiri' ? '🌊 治水' : '🛤 商政'} ${lv}/12 級` +
+  let h = `<div class="sktitle">${SK_LABEL[tree]} ${lv}/12 級` +
     (un ? `<span class="skun">可配 ${un} 點——點亮框者可修</span>` : '') + `</div>`;
   for(const t of [1, 2, 3]){
     const open = skTierOpen(tree, t);
@@ -1831,21 +1857,27 @@ function skTreeHtml(tree){
 function skAlloc(tree, key){
   const d = SKILLS[tree][key];
   if(!d || !S || S.gameOver || skUnspent(tree) <= 0 || !skTierOpen(tree, d.t) || skR(tree, key) >= d.max) return;
-  const sk = tree === 'suiri' ? (S.skSuiri = S.skSuiri || {}) : (S.skTrade = S.skTrade || {});
+  const sk = skBook(tree);
   sk[key] = (sk[key]||0) + 1;
   if(key === 'yousui') S.minshin = clamp(S.minshin + 2, 0, 100);
   if(key === 'zayaku') S.minshin = clamp(S.minshin + 1, 0, 100);
   log(`📜 ${d.name} 修至 ${sk[key]}/${d.max} 級。`, 'good');
   save(); render();
   const w = $('skWrap');
-  if(w) w.innerHTML = skTreeHtml('suiri') + skTreeHtml('trade');
+  if(w) w.innerHTML = `<div class="sktotal">家業修練 <b>${skTotalLv()}</b>/${SK_TOTAL_CAP} 級`
+      + (skCapLeft() ? `——尚可精進 ${skCapLeft()} 級` : '——已臻極致,三道再無所進')
+      + `<br><span class="dim">治水・商政・武藝共用此數:內政與武備,終須取捨。</span></div>`
+      + skTreeHtml('suiri') + skTreeHtml('trade') + skTreeHtml('bugei');
 }
 function skView(){
-  const dup = m => m && m.title && m.title.indexOf('治水・商政') >= 0;
+  const dup = m => m && m.title && m.title.indexOf('家業修練') >= 0;
   if(typeof modalQueue !== 'undefined' && modalQueue.some(dup)) return;
-  if(!$('modalBack').classList.contains('hidden') && $('modalTitle').textContent.indexOf('治水・商政') >= 0) return;
-  queueModal({ title:'📜 治水・商政之道',
-    hud:`<div id="skWrap">` + skTreeHtml('suiri') + skTreeHtml('trade') + `</div>`,
+  if(!$('modalBack').classList.contains('hidden') && $('modalTitle').textContent.indexOf('家業修練') >= 0) return;
+  queueModal({ title:'📜 家業修練——治水・商政・武藝',
+    hud:`<div id="skWrap"><div class="sktotal">家業修練 <b>${skTotalLv()}</b>/${SK_TOTAL_CAP} 級`
+        + (skCapLeft() ? `——尚可精進 ${skCapLeft()} 級` : '——已臻極致,三道再無所進')
+        + `<br><span class="dim">治水・商政・武藝共用此數:內政與武備,終須取捨。</span></div>`
+        + skTreeHtml('suiri') + skTreeHtml('trade') + skTreeHtml('bugei') + `</div>`,
     body:'', choices:[{label:'領命', fn:()=>{}}] });
   pumpModal();
 }
@@ -3987,6 +4019,24 @@ function unitWeight(k, cmd, ctx, side){
   if(side === 'atk' && u.rng > 0) w *= 0.55;
   return w;
 }
+// 武藝之效:僅施於我軍(unitWeight 敵我共用,故在我方的強度呼叫點乘之)
+function bugeiMul(a, cmd, ctx){
+  if(!S || !S.skBugei) return 1;
+  const tot = armyTotal(a) || 1;
+  let m = 1;
+  if(cmd === 'hold')   m += 0.05 * skR('bugei','yarifusuma') * ((a.ashigaru||0)/tot);
+  if(cmd === 'volley' || cmd === 'suppress' || cmd === 'hiya')
+                       m += 0.04 * skR('bugei','yumigumi') * ((a.yumi||0)/tot);
+  if(cmd === 'charge' || cmd === 'assault' || cmd === 'flank')
+                       m += 0.06 * skR('bugei','kiba') * ((a.kiba||0)/tot);
+  const tp = skR('bugei','teppogumi');
+  if(tp){
+    const share = (a.teppo||0)/tot;
+    m += 0.07 * tp * share;
+    if(ctx && ctx.weather === 'rain') m += share * 0.42 * Math.min(1, tp/3);   // 雨天衰減減半(0.15→約0.57)
+  }
+  return m;
+}
 function armyStrength(a, cmd, ctx, foeArmy, side){
   let s = 0;
   const foeTot = armyTotal(foeArmy) || 1;
@@ -4299,7 +4349,8 @@ function startBattle(cfg){
     cfg, taisho:t, gunshi:g,
     my: {...sent}, foe: {...cfg.foe.army},
     myInit: armyTotal(sent), foeInit: armyTotal(cfg.foe.army),
-    myMor: baseMorale(t.bu, avgLoyalty(), meiboMor() + (t.trait==='gouyuu'?10:0) + (S.clanType==='temple'?8:0)),
+    myMor: baseMorale(t.bu, avgLoyalty(), meiboMor() + (t.trait==='gouyuu'?10:0) + (S.clanType==='temple'?8:0)
+            + 2*skR('bugei','jindate')),
     // 敵方士氣過去是寫死的 80,而我方由武勇/忠誠/威望算出約 98——對等條件下我方幾乎必勝。
     // 改為同一套公式,呼叫端傳入的 morale 只作為該敵的士氣加減(以 80 為基準)。
     foeMor: baseMorale(cfg.foe.general?.bu ?? 55, 75, (cfg.foe.morale ?? 80) - 80),
@@ -4423,7 +4474,8 @@ function resolveRound(myCmd){
   const foeSide = c.siege ? 'def' : c.defend ? 'atk' : null;
   const fortLv  = c.siege ? c.fort : c.defend ? (S.fort||0) : 0;
   const effFort = Math.max(0, fortLv - (BT.fired ? 1 : 0));    // 火矢燒毀櫓塀,城砦暫失一級之利
-  let myS = armyStrength(BT.my, myCmd, c, BT.foe, mySide) * (1 + t.bu/160) * aptMul(t, BT.my);
+  let myS = armyStrength(BT.my, myCmd, c, BT.foe, mySide) * (1 + t.bu/160) * aptMul(t, BT.my)
+          * bugeiMul(BT.my, myCmd, c);
   const fg = BT.cfg.foe.general;
   let foeS = armyStrength(BT.foe, foeCmd, c, BT.my, foeSide) * (1 + (fg?.bu||40)/160) * (fg ? aptMul(fg, BT.foe) : 1);
   const SP = (BT.special && BT.special.n > 0) ? BT.special : null;
@@ -5874,7 +5926,8 @@ const crowdOf = s => Math.max(1, KS.my.filter(x=>!x.broke && x.pos === s.pos).le
 const ksAlive = arr => arr.filter(s => !s.broke && ksTotal(s) > 0);
 function ksStrength(s, cmd, ctx, foeArmy){
   return armyStrength(s.army, cmd, ctx, foeArmy) * (1 + s.gen.bu/220) * aptMul(s.gen, s.army)
-       * POS[s.pos].atk * (s.kind==='vassal' ? 0.92 : 1);
+       * POS[s.pos].atk * (s.kind==='vassal' ? 0.92 : 1)
+       * (s.kind === 'foe' ? 1 : bugeiMul(s.army, cmd, ctx));   // 武藝只益我軍
 }
 // ── 我方備の提案 ──
 function ksProposeMy(){
@@ -6137,7 +6190,7 @@ function ksStart(hexMode){
     KS.my.forEach(s=>{ if(s.pos==='hon') s.pos = 'sen'; });
     (KS.my.find(s=>s.gen === S.retainers[0]) || KS.my[0]).pos = 'hon';
   }
-  const base = 56 + meiboMor() + avgLoyalty()*0.14;
+  const base = 56 + meiboMor() + avgLoyalty()*0.14 + 2*skR('bugei','jindate');   // 陣立
   KS.my.forEach(s=>{
     s.init = ksTotal(s);
     s.mor = clamp(base + s.gen.bu*0.28 + (s.kind==='vassal' ? -6 : 0) + (KS.attacking ? 0 : (S.fort||0)*3), 25, 130);
@@ -6452,10 +6505,12 @@ function ksResolve(cmd){
   const breakSide = (arr, isMy) => {
     for(const s of arr){
       if(s.broke || s.pos === 'dono') continue;
-      if(s.mor <= 0 || ksTotal(s) <= Math.max(3, s.init*0.12)){
+      const brkF = isMy ? Math.max(0.06, 0.12 - 0.02*skR('bugei','futaiten')) : 0.12;
+      if(s.mor <= 0 || ksTotal(s) <= Math.max(3, s.init*brkF)){
         s.broke = true;
         ev.push(`${isMy?'⚠ ':'🎉 '}${s.name}(${s.gen.name})崩潰,陣線瓦解!`);
-        arr.forEach(o=>{ if(o !== s && !o.broke) o.mor = clamp(o.mor - (s.pos==='hon' ? 30 : 8), 0, 140); });
+        { const ft = isMy ? Math.max(0.4, 1 - 0.30*skR('bugei','futaiten')) : 1;   // 不退轉:我軍不因友軍之潰而亂
+          arr.forEach(o=>{ if(o !== s && !o.broke) o.mor = clamp(o.mor - (s.pos==='hon' ? 30 : 8) * ft, 0, 140); }); }
         if(s.pos === 'hon') KS.rout = isMy ? 'my' : 'foe';
         if(!isMy) ksTryKill(s, ev);
       }
@@ -6562,7 +6617,8 @@ function fbRun(cfg){
   try{
     const my = fbClone(cfg.my), foe = fbClone(cfg.foe);
     [...my, ...foe].forEach(u=>{ u.init = armyTotal(u.army); u.broke = false;
-      if(!u.mor) u.mor = clamp(60 + (u.gen && u.gen.bu || 55) * 0.28, 25, 130); });
+      if(!u.mor) u.mor = clamp(60 + (u.gen && u.gen.bu || 55) * 0.28
+        + (u.kind === 'foe' ? 0 : 2*skR('bugei','jindate')), 25, 130); });   // 陣立:僅我軍
     KS = { fieldMode:true, attacking:true, target: cfg.target || 'field', dispName: cfg.dispName || '敵勢',
            my, foe, round:0, hist:[], full:[], sai:'', rout:null,
            ctx: cfg.ctx || {weather: pickWeather(), terrain:'plain', fort:0}, castle:null,
@@ -6739,7 +6795,7 @@ function fbPropose(f, sentArmy){
       ordMap:{hon:'adv',sen:'adv',left:'adv',dono:'hold'}, plan:'onken', kisaku:{type, p}};
     PLANS.push(kisaku);
   }
-  const noise = (1 - clamp(chi,20,100)/100) * 18;
+  const noise = (1 - clamp(chi,20,100)/100) * 18 * Math.max(0.35, 1 - 0.25*skR('bugei','gunbai'));   // 軍配:家傳之術補其智之不逮
   const out = PLANS.map(pl=>{
     const my = fbSplitMy(sentArmy, pl.plan);
     const cfg = {my, foe, ctx:{weather, terrain, fort:0}, defBonus, ordMap:pl.ordMap, hoshu:!!pl.hoshu, rikko:!!pl.rikko,
@@ -7416,7 +7472,8 @@ function ksHexResolve(){
       if(KS.rout) break;   // 本陣既崩勝負已決——餘隊隨軍敗走,不再逐隊宣告
       const s = u.s;
       if(s.broke) continue;
-      if(s.mor <= 0 || ksTotal(s) <= Math.max(3, s.init*0.12)){
+      const brkF = isMy ? Math.max(0.06, 0.12 - 0.02*skR('bugei','futaiten')) : 0.12;
+      if(s.mor <= 0 || ksTotal(s) <= Math.max(3, s.init*brkF)){
         s.broke = true;
         if(!s._fought && s.pos !== 'hon'){
           // 一矢未發的觀望軍不會「潰滅」——見大勢已去,全軍引き揚げ(兵員完整帶走)
@@ -7431,7 +7488,8 @@ function ksHexResolve(){
         }else{
           ev.push(`${isMy?'⚠ ':'🎉 '}${s.name}(${s.gen.name})崩潰,潰兵四散!`);
         }
-        (isMy?KS.my:KS.foe).forEach(o=>{ if(o!==s && !o.broke) o.mor = clamp(o.mor - (s.pos==='hon'?30:8), 0, 140); });
+        { const ft = isMy ? Math.max(0.4, 1 - 0.30*skR('bugei','futaiten')) : 1;
+          (isMy?KS.my:KS.foe).forEach(o=>{ if(o!==s && !o.broke) o.mor = clamp(o.mor - (s.pos==='hon'?30:8) * ft, 0, 140); }); }
         if(isMy && s.kind === 'family' && KS.scenario && !KS.rout)
           ev.push(`⚠ 你的本隊潰散——殘兵護主退出戰線,餘下的戰局唯有旁觀……`);
         hxNeighbors(u.c,u.r).forEach(p=>{ const o = hxUnitAt(p.c,p.r);
@@ -9397,6 +9455,16 @@ function resolveTasks(){
         S.army[ut] = (S.army[ut]||0) + gain;
         S.soldiers += gain;
         r.merit = (r.merit||0) + 2;
+        // 練兵一事兩得:既補兵員,亦精進武藝(進度制,比照水利;係數較低以免壓過屯田)
+        if(S.bugei == null) S.bugei = 0;
+        if(S.bugei < 12 && skCapLeft() > 0){
+          r._bugei = (r._bugei || 0) + r.bu * eff * 0.75;
+          if(r._bugei >= 100){
+            r._bugei -= 100; S.bugei += 1; r.merit += 5;
+            log(`${r.name} 主持的操練大成——武藝 ${S.bugei} 級,兵法之議可擇新技,記大功。`,'good');
+            skPickModal('bugei');
+          }
+        }
         // 操練也是歷練,但遠不及實戰(實戰一場 36~72,平時一季 9)
         addAptExp(r, {ashigaru:0, yumi:0, kiba:0, teppo:0, [ut]:1}, 9 * eff)
           .forEach(l => log(`⚔ ${l}`, 'good'));
@@ -9417,6 +9485,7 @@ function resolveTasks(){
       }
       case 'fushin': {
         if(S.suiri >= 12){ log(`${r.name}:領內水利已臻完善(上限 12 級),無須再修。`); break; }
+        if(skCapLeft() <= 0){ log(`${r.name}:家業修練已臻極致(三道合計 ${SK_TOTAL_CAP} 級),水利無以再進。`); break; }
         if(S.money < 15){ log(`${r.name}:資金不足,普請未能動工。`,'bad'); break; }
         S.money -= 15;
         r._fushin = (r._fushin || 0) + r.nai * eff;
@@ -11029,7 +11098,7 @@ function render(){
     `<span class="res ${S.minshin<25?'warn':''}">民心 <b>${S.minshin}</b>${S.minshin<25?' ⚠':''}</span>`+
     (S.lords ? `<span class="res">${S.isDaimyo ? '⛩ <b style="color:#ffd98a">大名</b>' : `臣從 <b>${S.allegiance ? LORD_META[S.allegiance].name+'家' : '─獨立─'}</b>`}</span>` : '')+
     ((S.kani||0) > 0 ? `<span class="res">官位 <b>${kaniLabel()}</b></span>` : '')+
-    `<span class="res" style="cursor:pointer" onclick="skView()" title="點看治水・商政技能樹">水利 <b>${S.suiri}</b>${skUnspent('suiri')?'●':''} 商路 <b>${S.tradeLv}</b>${skUnspent('trade')?'●':''}${S.fort?` 城 <b>${S.fort}</b>`:''}${S.rakuichi?` 樂市 <b>${S.rakuichi}</b>`:''}${S.ships?` 船 <b>${S.ships}</b>`:''}</span>`+
+    `<span class="res" style="cursor:pointer" onclick="skView()" title="點看治水・商政技能樹">水利 <b>${S.suiri}</b>${skUnspent('suiri')?'●':''} 商路 <b>${S.tradeLv}</b>${skUnspent('trade')?'●':''} 武藝 <b>${S.bugei||0}</b>${skUnspent('bugei')?'●':''}${S.fort?` 城 <b>${S.fort}</b>`:''}${S.rakuichi?` 樂市 <b>${S.rakuichi}</b>`:''}${S.ships?` 船 <b>${S.ships}</b>`:''}</span>`+
     (S.farmWork>0?`<span class="res">農務 <b>+${S.farmWork.toFixed(0)}%</b></span>`:'');
   { const kc = $('kamonTop').getContext('2d');
     KAMON[S.kamon||0].draw(kc, 11, 11, 9.5, '#ffd98a', '#3a2f24'); }
