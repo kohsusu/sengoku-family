@@ -91,6 +91,20 @@
   }
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
   .groupTag{font-size:11px;color:var(--ink2);letter-spacing:5px;text-align:center;margin:3px 0 -3px;font-family:var(--serif)}
+  /* 諸國情報:置於地圖之下,預設收合——番付與大名情勢是「查閱」而非「每季必看」 */
+  #intelWrap{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+  #intelWrap > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
+    padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper2);
+    font-family:var(--serif);user-select:none;min-height:34px}
+  #intelWrap > summary::-webkit-details-marker{display:none}
+  #intelWrap > summary::before{content:'▸';color:var(--accent2);font-weight:bold;transition:transform .15s}
+  #intelWrap[open] > summary::before{content:'▾'}
+  #intelWrap > summary:hover{background:#fdf3e0}
+  #intelWrap .intelTtl{font-weight:bold;letter-spacing:3px;font-size:14px}
+  #intelWrap .intelSum{font-size:12px;color:var(--ink2);font-family:inherit;flex:1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #intelWrap > .card{margin-top:8px}
+  @media (pointer: coarse){ #intelWrap > summary{min-height:44px} }
   .card.ops{background:#fdf1dc;border-color:#d8c49a}
   #modalHud .fbrow{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0}
   #modalHud .fbcard{border:1.5px solid var(--line);border-radius:8px;padding:5px 9px;min-width:96px;background:rgba(246,239,221,.65);font-size:12px;line-height:1.4}
@@ -466,9 +480,15 @@
     <div id="mapWrap">
       <canvas id="map" width="900" height="560"></canvas>
       <div id="mapCap"></div>
+      <details id="intelWrap">
+        <summary><span class="intelTtl">諸國情報</span><span class="intelSum" id="intelSum"></span></summary>
+        <div class="card" id="rivalBox"></div>
+        <div class="card" id="lordBox"></div>
+      </details>
     </div>
     <div id="panel">
       <div id="panelL">
+      <div class="card ops" id="adviceBox" style="display:none"></div>
       <div class="card" id="dateBox"></div>
       <div class="card" id="taskBox">
         <div class="cardTitle">家臣派遣(每季一人一務)</div>
@@ -476,14 +496,10 @@
         <div id="retainerList"></div>
         <div id="taskHint">選擇指令以查看說明。</div>
       </div>
-      <div class="card" id="gechiBox" style="display:none"></div>
-      <div class="card" id="familyBox"></div>
       </div>
       <div id="panelR">
-      <div class="card ops" id="adviceBox" style="display:none"></div>
-      <div class="groupTag">── 情 報 ──</div>
-      <div class="card" id="rivalBox"></div>
-      <div class="card" id="lordBox"></div>
+      <div class="card" id="gechiBox" style="display:none"></div>
+      <div class="card" id="familyBox"></div>
       <div class="groupTag">── 政 務 ──</div>
       <div class="card ops" id="policyBox">
         <div class="row">年貢率:
@@ -544,7 +560,7 @@
 
 <script>
 'use strict';
-const BUILD = 'art2';
+const BUILD = 'lay1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -11081,6 +11097,7 @@ function render(){
   renderFamily();
   renderGechi();
   renderRivals();
+  renderIntelSum();
   renderLords();
   // 年貢率
   document.querySelectorAll('.taxBtn').forEach(b=>{
@@ -11492,6 +11509,29 @@ function openLord(key){
 }
 
 // ---------- 國人眾番付面板 ----------
+// 情報區收合時的摘要——不展開也知道天下有沒有事
+function renderIntelSum(){
+  const el = $('intelSum'); if(!el || !S.rivals) return;
+  const live = S.rivals.filter(f=>f.alive);
+  if(!live.length){ el.textContent = ''; return; }
+  const top = live.reduce((a,b)=> score(b) > score(a) ? b : a);
+  const mine = myVassals().length;
+  const rum = (S.rumors||[]).length;
+  const wk = playerWeakness();
+  el.innerHTML = `近國最大 <b>${fname(top)}</b> ${top.koku}石`
+    + (mine ? `　從屬 <b>${mine}</b> 家` : '')
+    + (rum ? `　<b style="color:var(--accent)">風聞 ${rum}</b>` : '')
+    + (wk.w >= 30 ? `　<b style="color:var(--accent)">虛實外露 ${wk.w}</b>` : '')
+    + (S.coalition ? `　<b style="color:var(--accent)">包圍網</b>` : '');
+  const wrap = $('intelWrap');
+  if(wrap && !wrap._bound){
+    wrap._bound = 1;
+    try{ if(localStorage.getItem('sengoku_intel_open') === '1') wrap.open = true; }catch(e){}
+    wrap.addEventListener('toggle', ()=>{
+      try{ localStorage.setItem('sengoku_intel_open', wrap.open ? '1' : '0'); }catch(e){}
+    });
+  }
+}
 function renderRivals(){
   if(!S.rivals){ $('rivalBox').innerHTML = ''; return; }
   // 近國番付:只列兵馬或使者可及者(≤240),遠國之家仍在地圖與世上活動
