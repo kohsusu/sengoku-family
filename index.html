@@ -593,7 +593,7 @@
 
 <script>
 'use strict';
-const BUILD = 'w1a';
+const BUILD = 'w1b';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -768,7 +768,12 @@ function newState(famName, kamon, clan, mode, region, scen){
     rivals: makeRivals(),
     lords:{ imagawa:{demesne:4000, favor:0, bidate:0}, oda:{demesne:2400, favor:0, bidate:0},
             saito:{demesne:2200, favor:0}, takeda:{demesne:2600, favor:0},
-            nagao:{demesne:2800, favor:0} },
+            nagao:{demesne:2800, favor:0},
+            // 天文十四年的西國:三好長慶方張,朝倉守成,淺井尚微,將軍家兵微而名重
+            asakura:{demesne:2600, favor:0},  rokkaku:{demesne:2200, favor:0},
+            azai:{demesne:900,  favor:0},     miyoshi:{demesne:3000, favor:0},
+            honganji:{demesne:2400, favor:0}, ashikaga:{demesne:500,  favor:0},
+            hatakeyama:{demesne:1400, favor:0}, kitabatake:{demesne:1600, favor:0} },
     allegiance:null, hostage:null, warCd:4,
     year:1545, season:0,
     rice:300, money:50, pop:400, soldiers:20, prestige:10, minshin:60,
@@ -1296,6 +1301,17 @@ function fmtWhen(ts){
               : `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function migrate(s){
+  // 第二期擴圖:八家新大名(畿內・北陸・伊勢)。舊檔沒有它們,補上即可——
+  // 座標原點沒動,故眾與城的 x,y 一個都不必改。
+  if(s && s.rivals && !s.rivals.some(f=>f.id === 'saika')){
+    const have = new Set(s.rivals.map(f=>f.id));
+    for(const f of makeRivals0()) if(!have.has(f.id)) s.rivals.push(JSON.parse(JSON.stringify(f)));
+  }
+  if(s && s.lords && !s.lords.asakura){
+    const W = {asakura:2600, rokkaku:2200, azai:900, miyoshi:3000,
+               honganji:2400, ashikaga:500, hatakeyama:1400, kitabatake:1600};
+    for(const k in W) if(!s.lords[k]) s.lords[k] = {demesne:W[k], favor:0, bidate:0};
+  }
   // 家業精進改制(BUILD kk1):舊檔三道各自升級 → 單一修練點池
   // 舊制「等級」是做任務白得的,其中已花在技能上的照算,未花的折回點池;
   // 半途的個人進度(_fushin/_bugei)併入家的進度條,不使玩家的工白做。
@@ -2203,7 +2219,48 @@ function makeRivals0(){
     {id:'murakami', name:'村上', seat:'葛尾',   gun:'埴科郡', x:420, y:58,  koku:750, prestige:16, persona:'武斷',   rel:0, marr:false, alive:true, lord:null,      clanKind:'kokujin'},
     {id:'ogasawara',name:'小笠原',seat:'林城',  gun:'筑摩郡', x:358, y:128, koku:700, prestige:28, persona:'名門',   rel:0, marr:false, alive:true, lord:null,      clanKind:'kokujin'},
     {id:'suwa',     name:'諏訪', seat:'上原',   gun:'諏訪郡', x:412, y:142, koku:650, prestige:22, persona:'名門',   rel:0, marr:false, alive:true, lord:'takeda',  clanKind:'temple'},
-    {id:'kiso',     name:'木曾', seat:'福島',   gun:'筑摩郡', x:300, y:146, koku:600, prestige:12, persona:'保守',   rel:0, marr:false, alive:true, lord:null,      clanKind:'kokujin'}
+    {id:'kiso',     name:'木曾', seat:'福島',   gun:'筑摩郡', x:300, y:146, koku:600, prestige:12, persona:'保守',   rel:0, marr:false, alive:true, lord:null,      clanKind:'kokujin'},
+    // ── 近江眾(湖國:六角與淺井之間,兼有甲賀之忍與堅田之水運) ──
+    {id:'kyogoku',  name:'京極', seat:'上平寺', gun:'坂田郡', x:-33, y:317, koku:700, prestige:38, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'gamo',     name:'蒲生', seat:'日野',   gun:'蒲生郡', x:-50, y:442, koku:850, prestige:18, persona:'中立', rel:0, marr:false, alive:true, lord:'rokkaku', clanKind:'kokujin'},
+    {id:'koga',     name:'甲賀衆', seat:'甲賀', gun:'甲賀郡', x:-78, y:464, koku:520, prestige:12, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'shinobi'},
+    {id:'katata',   name:'堅田衆', seat:'堅田', gun:'滋賀郡', x:-169, y:409, koku:480, prestige:10, persona:'商業', rel:0, marr:false, alive:true, lord:null, clanKind:'suigun'},
+    // ── 越前・若狹・北陸眾 ──
+    {id:'horie',    name:'堀江', seat:'堀江',   gun:'坂井郡', x:-89, y:76, koku:560, prestige:8, persona:'保守', rel:0, marr:false, alive:true, lord:'asakura', clanKind:'kokujin'},
+    {id:'heisenji', name:'平泉寺', seat:'平泉寺', gun:'大野郡', x:37, y:125, koku:620, prestige:26, persona:'門徒', rel:0, marr:false, alive:true, lord:null, clanKind:'temple'},
+    {id:'wakasatakeda', name:'武田', seat:'後瀨山', gun:'遠敷郡', x:-225, y:296, koku:780, prestige:30, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'togashi',  name:'富樫', seat:'高尾',   gun:'石川郡', x:79, y:-18, koku:380, prestige:16, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'cho',      name:'長',   seat:'穴水',   gun:'鳳至郡', x:180, y:-238, koku:540, prestige:10, persona:'保守', rel:0, marr:false, alive:true, lord:'hatakeyama', clanKind:'kokujin'},
+    {id:'jinbo',    name:'神保', seat:'富山',   gun:'婦負郡', x:285, y:-73, koku:820, prestige:14, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'shiina',   name:'椎名', seat:'松倉',   gun:'新川郡', x:376, y:-67, koku:700, prestige:12, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'anegakoji',name:'姉小路', seat:'古川', gun:'吉城郡', x:278, y:67, koku:560, prestige:24, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'mitsuki',  name:'三木', seat:'櫻洞',   gun:'益田郡', x:299, y:147, koku:620, prestige:10, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    // ── 丹後・丹波・播磨眾 ──
+    {id:'isshiki',  name:'一色', seat:'建部山', gun:'加佐郡', x:-389, y:302, koku:700, prestige:28, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'hatano',   name:'波多野', seat:'八上', gun:'多紀郡', x:-410, y:424, koku:900, prestige:16, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'akai',     name:'赤井', seat:'黑井',   gun:'冰上郡', x:-452, y:388, koku:620, prestige:12, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'akamatsu', name:'赤松', seat:'置鹽',   gun:'飾東郡', x:-480, y:473, koku:880, prestige:32, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'bessho',   name:'別所', seat:'三木',   gun:'美囊郡', x:-490, y:507, koku:760, prestige:14, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    // ── 攝津・河内・和泉眾(三好治下的畿內) ──
+    {id:'ikeda',    name:'池田', seat:'池田',   gun:'豐島郡', x:-337, y:500, koku:700, prestige:12, persona:'商業', rel:0, marr:false, alive:true, lord:null, clanKind:'merchant'},
+    {id:'itami',    name:'伊丹', seat:'有岡',   gun:'川邊郡', x:-340, y:513, koku:640, prestige:10, persona:'商業', rel:0, marr:false, alive:true, lord:null, clanKind:'merchant'},
+    {id:'yasumi',   name:'安見', seat:'高屋',   gun:'古市郡', x:-274, y:583, koku:580, prestige:8, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'matsura',  name:'松浦', seat:'岸和田', gun:'南郡',   x:-358, y:610, koku:520, prestige:8, persona:'海賊', rel:0, marr:false, alive:true, lord:null, clanKind:'suigun'},
+    // ── 大和・伊賀眾(寺社與忍の國) ──
+    {id:'tsutsui',  name:'筒井', seat:'筒井',   gun:'添下郡', x:-211, y:568, koku:820, prestige:20, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'kofukuji', name:'興福寺', seat:'奈良', gun:'添上郡', x:-194, y:543, koku:900, prestige:44, persona:'門徒', rel:0, marr:false, alive:true, lord:null, clanKind:'temple'},
+    {id:'ochi',     name:'越智', seat:'貝吹山', gun:'高市郡', x:-211, y:607, koku:480, prestige:10, persona:'保守', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'momochi',  name:'百地', seat:'喰代',   gun:'阿拜郡', x:-82, y:510, koku:420, prestige:10, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'shinobi'},
+    {id:'fujibayashi', name:'藤林', seat:'湯舟', gun:'山田郡', x:-103, y:528, koku:400, prestige:8, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'shinobi'},
+    // ── 伊勢・志摩眾 ──
+    {id:'seki',     name:'關',   seat:'龜山',   gun:'鈴鹿郡', x:20, y:488, koku:660, prestige:14, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'kanbe',    name:'神戶', seat:'神戶',   gun:'河曲郡', x:65, y:482, koku:700, prestige:12, persona:'商業', rel:0, marr:false, alive:true, lord:'kitabatake', clanKind:'kokujin'},
+    {id:'naganoise',name:'長野', seat:'安濃津', gun:'安濃郡', x:41, y:528, koku:740, prestige:16, persona:'保守', rel:0, marr:false, alive:true, lord:'kitabatake', clanKind:'kokujin'},
+    {id:'kuki',     name:'九鬼', seat:'田城',   gun:'答志郡', x:156, y:604, koku:560, prestige:10, persona:'海賊', rel:0, marr:false, alive:true, lord:null, clanKind:'suigun'},
+    // ── 紀伊眾(鐵砲傭兵と熊野水軍) ──
+    {id:'saika',    name:'雜賀衆', seat:'雜賀莊', gun:'海部郡', x:-428, y:687, koku:880, prestige:22, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'negoro',   name:'根來寺', seat:'根來', gun:'那賀郡', x:-379, y:659, koku:820, prestige:30, persona:'門徒', rel:0, marr:false, alive:true, lord:null, clanKind:'temple'},
+    {id:'kumano',   name:'熊野', seat:'新宮',   gun:'牟婁郡', x:-141, y:836, koku:600, prestige:18, persona:'海賊', rel:0, marr:false, alive:true, lord:null, clanKind:'suigun'}
   ];
 }
 const KIND_LABEL = {kokujin:'國人', merchant:'商人', temple:'寺社', suigun:'水軍', shinobi:'忍'};
@@ -3118,10 +3175,36 @@ function simVassalDefections(lines){
 const CLAN_PROV = {mizuno:'mikawa', toda:'mikawa', kira:'mikawa', udono:'mikawa', saigo:'mikawa',
   okudaira:'mikawa', suganuma:'mikawa', honshoji:'mikawa', saji:'owari', sanada:'shinano',
   yamaguchi:'owari', hayashi:'owari', hattori:'owari', ii:'totomi', osawa:'totomi',
-  amano:'totomi', matsui:'totomi', murakami:'shinano', ogasawara:'shinano', suwa:'shinano', kiso:'shinano'};
-const PROV_ADJ = {mino:['owari','shinano'], owari:['mino','mikawa'], mikawa:['owari','totomi'],
-  totomi:['mikawa','suruga'], suruga:['totomi','kai'], kai:['suruga','shinano'],
-  shinano:['kai','mino','echigo'], echigo:['shinano']};
+  amano:'totomi', matsui:'totomi', murakami:'shinano', ogasawara:'shinano', suwa:'shinano', kiso:'shinano',
+  // 第二期:西國三十四家
+  kyogoku:'omi', gamo:'omi', koga:'omi', katata:'omi',
+  horie:'echizen', heisenji:'echizen', wakasatakeda:'wakasa', togashi:'kaga', cho:'noto',
+  jinbo:'etchu', shiina:'etchu', anegakoji:'hida', mitsuki:'hida',
+  isshiki:'tango', hatano:'tanba', akai:'tanba', akamatsu:'harima', bessho:'harima',
+  ikeda:'settsu', itami:'settsu', yasumi:'kawachi', matsura:'izumi',
+  tsutsui:'yamato', kofukuji:'yamato', ochi:'yamato', momochi:'iga', fujibayashi:'iga',
+  seki:'ise', kanbe:'ise', naganoise:'ise', kuki:'shima',
+  saika:'kii', negoro:'kii', kumano:'kii'};
+const PROV_ADJ = {
+  mino:['owari','shinano','omi','hida'], owari:['mino','mikawa','ise'],
+  mikawa:['owari','totomi'], totomi:['mikawa','suruga'], suruga:['totomi','kai'],
+  kai:['suruga','shinano'], shinano:['kai','mino','echigo','hida','etchu'],
+  echigo:['shinano','etchu'],
+  // ── 第二期:北陸・畿內・伊勢紀伊 ──
+  hida:['mino','etchu','shinano'], etchu:['kaga','noto','hida','echigo'],
+  noto:['kaga','etchu'], kaga:['echizen','noto','etchu'],
+  echizen:['omi','wakasa','kaga','mino'], wakasa:['echizen','omi','tanba','tango'],
+  tango:['tanba','wakasa'], tanba:['yamashiro','settsu','tango','wakasa','omi','harima'],
+  harima:['settsu','tanba'],
+  omi:['mino','yamashiro','echizen','iga','ise','wakasa','tanba'],
+  yamashiro:['omi','tanba','settsu','kawachi','yamato','iga'],
+  settsu:['yamashiro','kawachi','izumi','tanba','harima'],
+  kawachi:['settsu','izumi','yamato','kii'], izumi:['settsu','kawachi','kii'],
+  yamato:['yamashiro','kawachi','kii','iga','ise'],
+  iga:['omi','yamato','ise','yamashiro'],
+  ise:['omi','iga','yamato','shima','owari','mino','kii'],
+  shima:['ise'], kii:['izumi','kawachi','yamato','ise']
+};
 function lordProvs(key){
   if(key === 'nagao') return ['echigo'];
   const po = provOwners();
@@ -3294,6 +3377,8 @@ function simLords(lines){
       grow += g;
       if(g > bestV){ bestV = g; best = {v, act: doBu ? '整備兵農' : '督導檢地開墾'}; }
     }
+    // 家風各異,開墾之效自不相同
+    grow *= (LORD_GROW[key] !== undefined ? LORD_GROW[key] : 1);
     // 甲州金山之利:黑川・湯之奧諸金山歲出黃金——信玄多線開戰的底氣(史實:甲斐才是戰國金山的代名詞)
     if(key === 'takeda'){
       const kin = ri((18 + Math.random() * 18) * (L.demesne > 8000 ? 0.4 : 1));
@@ -3301,6 +3386,8 @@ function simLords(lines){
       if(Math.random() < 0.3) lines.push(`⛏ 甲州金山出金——武田家直轄 +${kin} 石(黑川金山之利)。`);
     }
     L.demesne = ri(L.demesne + grow);
+    if(key === 'ashikaga' && Math.random() < 0.06)
+      lines.push(`⚘ 將軍家又下御內書於諸國——諸大名皆頓首受之,而無一人發兵。名分猶在,號令不行。`);
     if(best && grow >= 20) lines.push(`${LORD_META[key].name}家 ${best.v.n} ${best.act},直轄領 +${ri(grow)} 石(現 ${L.demesne})。`);
     // ── 戰略目標:鎖定最弱敵家的一座城 ──
     const foes = aiLords().filter(k=>k!==key && !S.lords[k].submitted);
@@ -3412,7 +3499,16 @@ const REGIONS = {
   mikawa: {name:'三河', px:290, py:380, tag:'兩強夾縫・古戰場', desc:'今川與織田的角力場。鄰家眾多、事件最密——本作的原點。'},
   owari:  {name:'尾張', px:185, py:332, tag:'織田の膝元', desc:'信長崛起的腹地。鄰接美濃與伊勢灣商路,但天下布武的兵鋒近在咫尺。'},
   totomi: {name:'遠江', px:522, py:342, tag:'今川治下', desc:'駿府的西境。井伊等名門為鄰,今川庇護深厚——但主家一倒,風暴便至。'},
-  shinano:{name:'信濃', px:385, py:112, tag:'山國・龍虎の狹間', desc:'武田與上杉爭奪之地。土地貧瘠、強鄰環伺——最艱難的開局。'}
+  shinano:{name:'信濃', px:385, py:112, tag:'山國・龍虎の狹間', desc:'武田與上杉爭奪之地。土地貧瘠、強鄰環伺——最艱難的開局。'},
+  // ── 第二期擴圖:西國四處 ──
+  omi:    {name:'近江', px:-108, py:352, tag:'湖國・東西之咽喉',
+           desc:'琵琶湖畔,六角與淺井南北相持。東西往來必經之地——商路最盛,兵禍也最頻。'},
+  iga:    {name:'伊賀', px:-118, py:494, tag:'惣國一揆・忍びの國',
+           desc:'無守護之國,諸家以合議自治。土地最薄、家格最微,唯諜報之術甲於天下。'},
+  kii:    {name:'紀伊', px:-330, py:702, tag:'鐵砲と水軍の國',
+           desc:'雜賀・根來的鐵砲,熊野的水軍。無人稱國主,而諸強皆須假借其力。'},
+  echizen:{name:'越前', px:-58, py:186, tag:'朝倉治下・北國の玄關',
+           desc:'一乘谷的文華之下。主家守成而不圖進取——安穩,直到安穩不再。'}
 };
 const playerPos = () => { const R = REGIONS[S.region] || REGIONS.mikawa; return {x:R.px, y:R.py}; };
 const rdist = (a, b) => Math.hypot((a.x||0)-(b.x||0), (a.y||0)-(b.y||0));
@@ -4851,12 +4947,59 @@ const LORD_META = { // name 可被歷史事件改寫(松平→德川、羽柴→
   tokugawa:{name:'松平', capital:'岡崎'},
   takeda:  {name:'武田', capital:'甲府'},
   nagao:   {name:'長尾', capital:'春日山'},
-  toyotomi:{name:'羽柴', capital:'大坂'}
+  toyotomi:{name:'羽柴', capital:'大坂'},
+  // ── 第二期新入八家(畿內・北陸・伊勢) ──
+  asakura:   {name:'朝倉',   capital:'一乘谷'},
+  rokkaku:   {name:'六角',   capital:'觀音寺'},
+  azai:      {name:'淺井',   capital:'小谷'},
+  miyoshi:   {name:'三好',   capital:'芥川山'},
+  honganji:  {name:'本願寺', capital:'石山'},
+  ashikaga:  {name:'足利',   capital:'二條'},
+  hatakeyama:{name:'畠山',   capital:'七尾'},
+  kitabatake:{name:'北畠',   capital:'大河内'}
 };
 // 各大名的史實重臣(每年執行任務,推動國力成長)
 // 大名家中亦是封建:重臣各依階級持知行地(家老/侍大將/部將),大名僅直轄其餘
 const RANK_SHARE = {karo:0.13, shodai:0.085, busho:0.055};   // 知行=直轄總石高×份額
+// 開墾之效的家風修正。將軍家所領不過山城一隅,守護早已不聽號令——
+// 它的份量從來不在石高,而在名分,所以不能讓它跟著諸大名一起長。
+const LORD_GROW = {ashikaga:0.12, honganji:1.25, miyoshi:1.1, azai:1.1, hatakeyama:0.85};
+// (西國八家的重臣另立於 LORD_VASSALS_WEST,於其後併入)
 const RANK_LABEL = {karo:'家老', shodai:'侍大將', busho:'部將'};
+const LORD_VASSALS_WEST = {
+  asakura: [{n:'朝倉宗滴',bu:86,nai:70,chi:90,rank:'karo'},{n:'朝倉景鏡',bu:66,nai:58,chi:52,rank:'karo'},
+            {n:'山崎吉家',bu:72,nai:56,chi:64,rank:'shodai'},{n:'魚住景固',bu:64,nai:62,chi:58,rank:'shodai'},
+            {n:'真柄直隆',bu:90,nai:34,chi:40,rank:'busho'},{n:'朝倉景健',bu:62,nai:50,chi:52,rank:'busho'},
+            {n:'印牧能信',bu:68,nai:46,chi:54,rank:'busho'}],
+  rokkaku: [{n:'蒲生定秀',bu:66,nai:82,chi:74,rank:'karo'},{n:'後藤賢豐',bu:70,nai:66,chi:68,rank:'karo'},
+            {n:'進藤賢盛',bu:60,nai:70,chi:66,rank:'shodai'},{n:'平井定武',bu:64,nai:58,chi:56,rank:'shodai'},
+            {n:'三雲成持',bu:68,nai:52,chi:64,rank:'busho'},{n:'吉田重政',bu:80,nai:44,chi:50,rank:'busho'},
+            {n:'永原重虎',bu:62,nai:54,chi:50,rank:'busho'}],
+  azai:    [{n:'遠藤直經',bu:74,nai:56,chi:80,rank:'karo'},{n:'赤尾清綱',bu:76,nai:60,chi:58,rank:'karo'},
+            {n:'海北綱親',bu:70,nai:64,chi:72,rank:'shodai'},{n:'雨森清貞',bu:68,nai:62,chi:62,rank:'shodai'},
+            {n:'磯野員昌',bu:88,nai:46,chi:54,rank:'shodai'},{n:'阿閉貞征',bu:58,nai:52,chi:48,rank:'busho'},
+            {n:'淺井政澄',bu:64,nai:50,chi:50,rank:'busho'}],
+  miyoshi: [{n:'松永久秀',bu:64,nai:78,chi:94,rank:'karo'},{n:'三好長逸',bu:70,nai:64,chi:66,rank:'karo'},
+            {n:'篠原長房',bu:72,nai:76,chi:74,rank:'shodai'},{n:'三好政康',bu:74,nai:50,chi:56,rank:'shodai'},
+            {n:'岩成友通',bu:70,nai:54,chi:60,rank:'shodai'},{n:'十河一存',bu:90,nai:38,chi:46,rank:'busho'},
+            {n:'安宅冬康',bu:74,nai:66,chi:64,rank:'busho'}],
+  honganji:[{n:'下間賴廉',bu:84,nai:62,chi:76,rank:'karo'},{n:'下間賴龍',bu:62,nai:74,chi:70,rank:'karo'},
+            {n:'下間仲孝',bu:60,nai:70,chi:66,rank:'shodai'},{n:'七里賴周',bu:72,nai:56,chi:64,rank:'shodai'},
+            {n:'杉浦玄任',bu:70,nai:50,chi:58,rank:'busho'},{n:'下間賴照',bu:58,nai:60,chi:54,rank:'busho'},
+            {n:'鈴木重意',bu:78,nai:48,chi:62,rank:'busho'}],
+  ashikaga:[{n:'細川藤孝',bu:74,nai:84,chi:88,rank:'karo'},{n:'三淵藤英',bu:68,nai:70,chi:70,rank:'karo'},
+            {n:'明智光秀',bu:78,nai:84,chi:92,rank:'shodai'},{n:'一色藤長',bu:56,nai:66,chi:64,rank:'shodai'},
+            {n:'和田惟政',bu:70,nai:60,chi:66,rank:'busho'},{n:'上野秀政',bu:52,nai:64,chi:62,rank:'busho'},
+            {n:'伊勢貞興',bu:72,nai:58,chi:60,rank:'busho'}],
+  hatakeyama:[{n:'長續連',bu:72,nai:68,chi:66,rank:'karo'},{n:'遊佐續光',bu:64,nai:62,chi:74,rank:'karo'},
+            {n:'溫井總貞',bu:66,nai:56,chi:70,rank:'shodai'},{n:'長綱連',bu:76,nai:52,chi:56,rank:'shodai'},
+            {n:'平總知',bu:62,nai:54,chi:52,rank:'busho'},{n:'三宅長盛',bu:60,nai:58,chi:54,rank:'busho'},
+            {n:'伊丹續堅',bu:64,nai:50,chi:50,rank:'busho'}],
+  kitabatake:[{n:'鳥屋尾滿榮',bu:62,nai:78,chi:80,rank:'karo'},{n:'木造具政',bu:66,nai:64,chi:60,rank:'karo'},
+            {n:'日置大膳亮',bu:74,nai:52,chi:58,rank:'shodai'},{n:'澤房滿',bu:68,nai:58,chi:56,rank:'shodai'},
+            {n:'家城之清',bu:76,nai:46,chi:52,rank:'busho'},{n:'秋山右近',bu:72,nai:48,chi:54,rank:'busho'},
+            {n:'藤方朝成',bu:64,nai:56,chi:58,rank:'busho'}]
+};
 const LORD_VASSALS = {
   imagawa: [{n:'太原雪齋',bu:62,nai:88,chi:92,rank:'karo'},{n:'朝比奈泰朝',bu:74,nai:50,chi:52,rank:'karo'},
             {n:'岡部元信',bu:72,nai:44,chi:50,rank:'shodai'},{n:'庵原忠胤',bu:64,nai:60,chi:58,rank:'shodai'},
@@ -4880,6 +5023,7 @@ const LORD_VASSALS = {
             {n:'加藤清正',bu:86,nai:60,chi:54,rank:'shodai'},{n:'福島正則',bu:84,nai:42,chi:44,rank:'shodai'},{n:'大谷吉繼',bu:62,nai:78,chi:82,rank:'shodai'},
             {n:'淺野長政',bu:60,nai:78,chi:70,rank:'busho'},{n:'細川忠興',bu:74,nai:60,chi:62,rank:'busho'}]
 };
+Object.assign(LORD_VASSALS, LORD_VASSALS_WEST);   // 西國八家併入
 // 該重臣的知行(石)——階級定份額;死者除名後其地歸大名直轄(總量不變)
 function fiefOf(key, v){
   const L = S.lords && S.lords[key];
@@ -5130,10 +5274,23 @@ const CASTLES = {
   hamamatsu:{name:'濱松城', x:560, y:350, koku:900, prov:'遠江'},
   sunpu:   {name:'駿府館',  x:730, y:300, koku:1200, prov:'駿河'},
   inabayama:{name:'稻葉山城',x:120, y:120, koku:1000, prov:'美濃'},
-  tsutsujiga:{name:'躑躅崎館',x:780,y:120, koku:1100, prov:'甲斐'}
+  tsutsujiga:{name:'躑躅崎館',x:780,y:120, koku:1100, prov:'甲斐'},
+  // 座標由真實經緯換算(327 px/度)並套接縫位移 (-43,+128),與海岸線同一套
+  ichijodani:{name:'一乘谷館',x:-35, y:143, koku:1300, prov:'越前'},
+  odani:     {name:'小谷城',  x:-39, y:290, koku:600,  prov:'近江'},
+  kannonji:  {name:'觀音寺城',x:-77, y:400, koku:1100, prov:'近江'},
+  akutagawa: {name:'芥川山城',x:-277,y:489, koku:1400, prov:'攝津'},
+  ishiyama:  {name:'石山御坊',x:-303,y:542, koku:1200, prov:'攝津'},
+  nijo:      {name:'二條御所',x:-224,y:441, koku:300,  prov:'山城'},
+  nanao:     {name:'七尾城',  x:200, y:-178,koku:700,  prov:'能登'},
+  okochi:    {name:'大河内城',x:17,  y:597, koku:800,  prov:'伊勢'},
+  oyama:     {name:'尾山御坊',x:92,  y:-32, koku:900,  prov:'加賀'}
 };
 const CASTLE_OWNER0 = {kiyosu:'oda', okazaki:'imagawa', yoshida:'imagawa',
-  hamamatsu:'imagawa', sunpu:'imagawa', inabayama:'saito', tsutsujiga:'takeda'};
+  hamamatsu:'imagawa', sunpu:'imagawa', inabayama:'saito', tsutsujiga:'takeda',
+  ichijodani:'asakura', odani:'azai', kannonji:'rokkaku', akutagawa:'miyoshi',
+  ishiyama:'honganji', oyama:'honganji', nijo:'ashikaga', nanao:'hatakeyama',
+  okochi:'kitabatake'};
 function castleOwner(id){ return (S.castles && S.castles[id] !== undefined) ? S.castles[id] : CASTLE_OWNER0[id]; }
 function castlesOf(key){ return Object.keys(CASTLES).filter(id=>castleOwner(id)===key); }
 // 選定國戰目標:攻方挑守方的一座城(取其最弱者)
@@ -5770,11 +5927,57 @@ function becomeDaimyo(){
     choices:[{label:'受領', fn:()=>{}}]
   });
 }
-// ---------- 天下統一(終極目標:一家大名擊敗所有大名——滅亡或臣服) ----------
+// ---------- 上洛:握京都、挾將軍 ----------
+// 天下不必逐家踏平。十三家大名一一滅之是勞動不是玩法;史實的答案是上洛與惣無事令。
+function inKyoto(){
+  return castleOwner('nijo') === 'player'
+      || !!(S.lords && S.lords.ashikaga
+            && (S.lords.ashikaga.submitted || S.lords.ashikaga.alive === false));
+}
+// 惣無事令可行之時:已入京、勢壓群雄、且無一家能與你分庭抗禮
+function sobujiReady(){
+  if(!S.isDaimyo || S.gameOver || (S.flags && S.flags.unified)) return null;
+  if(!S.lords || !inKyoto()) return null;
+  const rest = aiLords().filter(k => !S.lords[k].submitted && S.lords[k].alive !== false);
+  if(!rest.length) return null;                       // 已無人可令,自走逐家之路
+  const mine = playerPower();
+  const total = mine + rest.reduce((a,k)=> a + lordPower(k), 0);
+  if(mine < total * 0.40) return null;                // 未過天下之半,令出而人不從
+  if(Math.max(...rest.map(k=>lordPower(k))) > mine * 0.25) return null;   // 尚有匹敵者
+  return rest;
+}
+// ---------- 天下統一(逐家滅之或臣服之;或上洛後一令而定) ----------
 function checkUnification(){
   if(!S.isDaimyo || S.gameOver || (S.flags && S.flags.unified)) return;
   const rest = aiLords().filter(k => !S.lords[k].submitted);
-  if(rest.length > 0) return;
+  if(rest.length > 0){
+    const can = sobujiReady();
+    if(can && S.sobujiY !== S.year){
+      S.sobujiY = S.year;
+      const names = can.map(k=>LORD_META[k].name+'家');
+      const cost = ri(300 + can.length * 60);
+      queueModal({title:'⚖【惣無事令】——天下靜謐の儀',
+        body:`京都在握${S.lords.ashikaga && S.lords.ashikaga.submitted ? '、將軍奉於麾下' : ''}。\n`+
+          `國力 ${playerPower()},諸家無一及你四分之一。\n\n`+
+          `老臣進言:「天下大勢已定。何必逐家踏平?\n`+
+          `奉將軍之名下惣無事令——私戰一概禁絕,不從者即為朝敵。」\n\n`+
+          `尚未歸服者:${names.join('、')}\n\n`+
+          `——這是織田未及做完、而豐臣做成了的事。`,
+        choices:[
+          {label:`⚖ 下惣無事令(費 ${cost} 貫・威望 -8)`, sub:'諸家俱服,天下靜謐',
+           fn:()=>{
+             if(S.money < cost){ log('府庫不足,使者的路費都湊不齊——此議暫且擱下。','bad'); return; }
+             S.money -= cost; S.prestige = Math.max(0, S.prestige - 8);
+             can.forEach(k=>{ S.lords[k].submitted = true; });
+             log(`⚖ 惣無事令下,${names.join('、')}俱奉表歸服——私戰息矣。`,'good');
+             checkUnification();
+           }},
+          {label:'不必——我要親手一家一家踏平', sub:'保留戰意,日後仍可再議',
+           fn:()=>{ log('「天下是打出來的,不是寫出來的。」——惣無事之議暫止。'); }}
+        ]});
+    }
+    return;
+  }
   if(!S.flags) S.flags = {};
   S.flags.unified = true;
   S.warPair = null;
@@ -5833,7 +6036,10 @@ const DIPLO = {
   '中立':  {tag:'持平', desc:'均衡務實,擇善而從'},
   '門徒':  {tag:'唯信', desc:'不事俗權——唯民心厚者可親'}
 };
-const HOUSE_MEI = {imagawa:3, takeda:3, nagao:2, tokugawa:2, oda:1, saito:1, toyotomi:1};   // 家格名分(足利名門/守護>成り上がり)
+// 家格名分(足利名門/守護 > 成り上がり)。將軍家獨居其上——兵微而名重,正是上洛之所圖。
+const HOUSE_MEI = {ashikaga:4, imagawa:3, takeda:3, hatakeyama:3, rokkaku:3, kitabatake:3,
+                   nagao:2, tokugawa:2, asakura:2, honganji:2,
+                   oda:1, saito:1, toyotomi:1, azai:1, miyoshi:1};
 // 名分隨京都風雲而變:奉將軍上洛者名分大漲;幕府亡則名門光環半衰(名分改由實力與新政權背書)
 function houseMei(key){
   let m = HOUSE_MEI[key] || 1;
@@ -12124,19 +12330,65 @@ function doRonin(){
 // 舊表九色疊完全擠在 L*65~77、彩度 6~31,最壞一組 ΔE 只有 6.5——那是同一個顏色。
 // 今川 桔梗色・織田 黄土色・武田 蘇芳・長尾 浅葱色・齋藤 緑青・玩家 洗朱
 // 無主 利休鼠・德川 鉄紺・豐臣 菖蒲色;跨十種實際並存組合,最壞 ΔE = 23.6。
-const LORDC = {imagawa:'#1b2fa7', oda:'#aa8821', tokugawa:'#000030', takeda:'#7b0538',
-               toyotomi:'#7033af', saito:'#1b8456', nagao:'#0470a3', player:'#d84628'};
+// 陣營從九個變十七個,不可能兩兩都分得開,故按「會不會擺在一起讀」分兩級:
+//   既比鄰(據點 700px 內)又同代者 → ΔE > 18;其餘只要 > 10。
+// 實測:比鄰同代 99 組最小 21.0,其餘最小 11.9;而與伝統色目標的平均偏離僅 3.1。
+const LORDC = {
+  imagawa:'#1b2fa7',   // 桔梗色
+  oda:'#aa8821',       // 黄土色
+  takeda:'#7b0538',    // 蘇芳
+  nagao:'#0470a3',     // 浅葱色
+  saito:'#1b8456',     // 緑青
+  player:'#d84628',    // 洗朱
+  tokugawa:'#7670b3',  // 藤鼠
+  toyotomi:'#20063f',  // 滅紫
+  asakura:'#4caad0',   // 水淺葱 — 越前
+  rokkaku:'#611b00',   // 煎茶色 — 南近江
+  azai:'#c1246a',      // 今様色 — 北近江(與六角緊鄰,故刻意離得最遠)
+  miyoshi:'#0054c5',   // 深縹   — 畿內
+  honganji:'#263702',  // 海松色 — 石山・加賀(一向宗兩處同色,本是一家)
+  ashikaga:'#f3a27d',  // 赤香色 — 將軍家
+  hatakeyama:'#77bc4f',// 若苗色 — 能登
+  kitabatake:'#ee8dbf' // 撫子色 — 伊勢(公家大名)
+};
 const MAP_PAPER = '#e9e0c6';                    // 和紙 L*89
 const MAP_SEA   = '#35495e';                    // 藍鼠 L*31——與紙差五十八階,全圖這才有最暗處
 const MAP_HALO  = 'rgba(238,228,203,.92)';      // 字的襯底
 const MAP_INK   = '#2b2620';
 // 七國當代的實際領有者(此前色塊是寫死的地理色,只有標籤會隨史實變)
+// 第二期新入十九國的天文十四年領有者。國主未立者歸「無主」——
+// 其地由境內豪族瓜分,誰來取都是憑本事,不是劇本說了算。
+const PROV_WEST = {
+  echizen:'asakura', kaga:'honganji', noto:'hatakeyama', etchu:'none', hida:'none',
+  wakasa:'none', tango:'none', tanba:'none', harima:'none',
+  omi:'rokkaku', yamashiro:'ashikaga', settsu:'miyoshi', kawachi:'none', izumi:'none',
+  yamato:'none', iga:'none', ise:'kitabatake', shima:'none', kii:'none'
+};
+const PROV_WEST_TXT = {
+  echizen:'朝倉家', kaga:'一向一揆', noto:'畠山家', etchu:'神保・椎名', hida:'姉小路家',
+  wakasa:'武田(若狹)', tango:'一色家', tanba:'波多野家', harima:'赤松家',
+  omi:'六角・淺井', yamashiro:'足利將軍家', settsu:'細川・三好', kawachi:'畠山家',
+  izumi:'細川家', yamato:'筒井・興福寺', iga:'惣國一揆', ise:'北畠家',
+  shima:'九鬼家', kii:'畠山・雜賀'
+};
+const PROV_NAME_WEST = {
+  echizen:'越前', kaga:'加賀', noto:'能登', etchu:'越中', hida:'飛驒', wakasa:'若狹',
+  tango:'丹後', tanba:'丹波', harima:'播磨', omi:'近江', yamashiro:'山城', settsu:'攝津',
+  kawachi:'河内', izumi:'和泉', yamato:'大和', iga:'伊賀', ise:'伊勢', shima:'志摩', kii:'紀伊'
+};
+const PROV_POS_WEST = {
+  noto:[212,-238], etchu:[300,-132], kaga:[96,-66], echizen:[-104,92], wakasa:[-214,244],
+  hida:[268,-6], omi:[-78,262], tanba:[-320,366], yamashiro:[-214,404], settsu:[-318,494],
+  kawachi:[-260,556], izumi:[-320,596], yamato:[-176,540], iga:[-92,490], ise:[36,476],
+  shima:[168,640], kii:[-250,700], harima:[-452,480], tango:[-372,330]
+};
 function provOwners(){
   const done = id => S.histDone && S.histDone.includes(id);
   if(S.flags && S.flags.ifLine) return {
     mino: done('if_kyoto') ? 'imagawa' : 'saito',
     owari: done('if_owari') ? 'imagawa' : 'oda',
-    mikawa:'imagawa', totomi:'imagawa', suruga:'imagawa', kai:'takeda', shinano:'none'};
+    mikawa:'imagawa', totomi:'imagawa', suruga:'imagawa', kai:'takeda', shinano:'none',
+    ...PROV_WEST};
   const oda = done('honnoji') ? 'toyotomi' : 'oda';
   return {
     mino:   done('saito_fall') ? oda : 'saito',
@@ -12145,7 +12397,8 @@ function provOwners(){
     totomi: done('imagawa_fall') ? 'tokugawa' : 'imagawa',
     suruga: done('honnoji') ? 'tokugawa' : done('imagawa_fall') ? 'takeda' : 'imagawa',
     kai:    done('honnoji') ? 'tokugawa' : 'takeda',
-    shinano: done('kawanaka_end') ? 'takeda' : 'none'};
+    shinano: done('kawanaka_end') ? 'takeda' : 'none',
+    ...PROV_WEST};
 }
 // 加權 Voronoi:每格歸於「√石高 ÷ (距離+45)」最大者——石高越大,influence 所及越廣。
 // 繪法:先算勝者網格 → 縮圖平滑放大(淡彩暈染) → 再描墨線界線(眾細、陣營粗)。
@@ -12172,6 +12425,7 @@ function provStatus(){
     legacy.kai = done('honnoji') ? tokuName+'家' : '武田家';
     legacy.shinano = done('kawanaka_end') ? '武田家' : '諸豪族';
   }
+  Object.assign(legacy, PROV_WEST_TXT);
   const out = {};
   for(const pk in base){
     let k = base[pk], txt = legacy[pk] || '', subm = false;
@@ -12180,8 +12434,8 @@ function provStatus(){
       if(L && L.alive === false){ k = 'player'; txt = famN; }          // 為你所滅——其地入你之手
       else if(L && L.submitted){ subm = true; txt = (LORD_META[k] ? LORD_META[k].name : '') + '家(臣服)'; }
     }
-    const col = k==='saito' ? '#8aa878' : k==='none' ? '#b0aca0'
-              : subm ? LORDC.player : (LORDC[k] || '#a49878');
+    const col = k==='none' ? '#878881'                      // 舊配色的殘渣:此處曾寫死齋藤的舊綠
+              : subm ? LORDC.player : (LORDC[k] || '#878881');
     out[pk] = {owner: subm ? 'player' : k, col, txt};
   }
   return out;
@@ -12249,7 +12503,16 @@ function _drawInfluenceRaw(c, R){
   }
   { // 大名親領:居城為源點,直轄石高定其幅員(臣服者著玩家之色;上杉據春日山,兵鋒自北而下)
     const LORD_CAP = {oda:'kiyosu', toyotomi:'kiyosu', imagawa:'sunpu', saito:'inabayama',
-                      takeda:'tsutsujiga', tokugawa:'okazaki'};
+                      takeda:'tsutsujiga', tokugawa:'okazaki',
+                      asakura:'ichijodani', rokkaku:'kannonji', azai:'odani',
+                      miyoshi:'akutagawa', honganji:'ishiyama', ashikaga:'nijo',
+                      hatakeyama:'nanao', kitabatake:'okochi'};
+    // 一向宗兩處:石山與加賀的尾山御坊本是一家,故本願寺多一個源點
+    if(S.lords && S.lords.honganji && S.lords.honganji.alive !== false && !S.lords.honganji.submitted){
+      const oy = CASTLES.oyama;
+      act.push({x:oy.x, y:oy.y, w:Math.sqrt(Math.max(1,(S.lords.honganji.demesne||2400)*0.45))*1.1,
+                camp:'honganji', col:LORDC.honganji});
+    }
     if(S.lords) for(const key in S.lords){
       const L = S.lords[key];
       if(!L || key === 'player' || L.alive === false) continue;
@@ -12402,16 +12665,7 @@ const MAP_W = 900, MAP_H = 560;                 // 視窗(畫布)大小——不
 // 比例尺(327 px/度)也不動,故 pdist / NEIGHBOR_R / inStrikeRange 等
 // 以像素為單位的距離門檻,原封不動仍然成立。
 const WORLD = {x0:-500, y0:-340, x1:900, y1:940};      // 1400 × 1280,現圖的 3.6 倍
-// 第一期新入之十七國(名・位・當代領有者)
-const NEW_PROV = [
-  ['能登', 212,-238,'畠山家'], ['越中', 300,-132,'神保・椎名'], ['加賀',  96, -66,'一向一揆'],
-  ['越前',-104,  92,'朝倉家'], ['若狹',-214, 244,'武田(若狹)'], ['飛驒', 268,  -6,'姉小路家'],
-  ['近江', -78, 262,'六角・淺井'], ['丹波',-320, 366,'波多野家'], ['山城',-214, 404,'足利將軍家'],
-  ['攝津',-318, 494,'細川・三好'], ['河内',-260, 556,'畠山家'], ['和泉',-320, 596,'細川家'],
-  ['大和',-176, 540,'筒井・興福寺'], ['伊賀', -92, 490,'惣國一揆'], ['伊勢',  36, 476,'北畠家'],
-  ['志摩', 168, 640,'九鬼家'], ['紀伊',-250, 700,'畠山・雜賀'], ['播磨',-452, 480,'赤松家'],
-  ['丹後',-372, 330,'一色家']
-];
+// (新國的名與位已移入 PROV_NAME_WEST / PROV_POS_WEST,隨 provStatus 更新領有者)
 const camClampX = x => Math.max(WORLD.x0, Math.min(WORLD.x1 - MAP_W, x));
 const camClampY = y => Math.max(WORLD.y0, Math.min(WORLD.y1 - MAP_H, y));
 function mapCam(){
@@ -12737,9 +12991,8 @@ function drawMap(){
                 suruga:[720,250], kai:[736,62], shinano:[400,60]};
     const LN = {mino:'美濃', owari:'尾張', mikawa:'三河', totomi:'遠江',
                 suruga:'駿河', kai:'甲斐', shinano:'信濃'};
-    for(const pk in LP) label(LN[pk], LP[pk][0], LP[pk][1], PV[pk].txt);
-    // 第一期新入之國(勢力歸屬待大名資料齊備,此處先立其名)
-    for(const [n, x, y, sub] of NEW_PROV) label(n, x, y, sub);
+    Object.assign(LP, PROV_POS_WEST); Object.assign(LN, PROV_NAME_WEST);
+    for(const pk in LP) if(PV[pk]) label(LN[pk], LP[pk][0], LP[pk][1], PV[pk].txt);
   }
   // 海・地物標籤
   const seaLab = (t,x,y,sz)=>{

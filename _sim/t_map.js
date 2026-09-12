@@ -122,20 +122,32 @@ const dEmin = JSON.parse(ev(`(()=>{
   const comp = k => hex(LORDC[k]).map((v,i)=> A*v + (1-A)*paper[i]);
   const fin = {none: hex('878881').map((v,i)=> A*v + (1-A)*paper[i])};
   for(const k in LORDC) fin[k] = comp(k);
-  // 只量史實上真會同時在場的組合
-  const SETS = [
-    ['imagawa','oda','takeda','nagao','saito','player','none'],
-    ['imagawa','oda','takeda','nagao','saito','player','none','tokugawa'],
-    ['nagao','none','player','tokugawa','toyotomi'],
-    ['nagao','none','oda','player','takeda','tokugawa']];
-  let m = 1e9, w = '';
-  for(const S2 of SETS) for(let i=0;i<S2.length;i++) for(let j=i+1;j<S2.length;j++){
-    const d = dE(fin[S2[i]], fin[S2[j]]); if(d < m){ m = d; w = S2[i]+'↔'+S2[j]; } }
-  const Ls = Object.keys(fin).map(k=>lab(fin[k])[0]);
-  return JSON.stringify({m, w, lo:Math.min(...Ls), hi:Math.max(...Ls)});
+  // 陣營十七家,不可能兩兩都分得開,故按「會不會擺在一起讀」分兩級:
+  //   既比鄰(據點 700px 內)又同代者 → ΔE > 18;其餘只要 > 10。
+  const CAP = {imagawa:[730,300], oda:[190,340], saito:[120,120], tokugawa:[360,350],
+    takeda:[780,120], nagao:[640,-230], toyotomi:[190,340], asakura:[-35,143],
+    rokkaku:[-77,400], azai:[-39,290], miyoshi:[-277,489], honganji:[-303,542],
+    ashikaga:[-224,441], hatakeyama:[200,-178], kitabatake:[17,597]};
+  const YR = {imagawa:[1545,1582], oda:[1545,1582], saito:[1545,1567], tokugawa:[1545,1615],
+    takeda:[1545,1582], nagao:[1545,1615], toyotomi:[1582,1615], asakura:[1545,1573],
+    rokkaku:[1545,1573], azai:[1545,1573], miyoshi:[1545,1577], honganji:[1545,1580],
+    ashikaga:[1545,1573], hatakeyama:[1545,1577], kitabatake:[1545,1576]};
+  const ks = Object.keys(fin);
+  let mN = 1e9, wN = '', mF = 1e9, wF = '';
+  for(let i=0;i<ks.length;i++) for(let j=i+1;j<ks.length;j++){
+    const a = ks[i], b = ks[j], d = dE(fin[a], fin[b]);
+    const nr = (!CAP[a] || !CAP[b]) ? true
+             : Math.hypot(CAP[a][0]-CAP[b][0], CAP[a][1]-CAP[b][1]) < 700;
+    const ov = (!YR[a] || !YR[b]) ? true : (YR[a][0] <= YR[b][1] && YR[b][0] <= YR[a][1]);
+    if(nr && ov){ if(d < mN){ mN = d; wN = a+'↔'+b; } }
+    else if(d < mF){ mF = d; wF = a+'↔'+b; }
+  }
+  const Ls = ks.map(k=>lab(fin[k])[0]);
+  return JSON.stringify({m:mN, w:wN, mF, wF, n:ks.length, lo:Math.min(...Ls), hi:Math.max(...Ls)});
 })()`));
-ok('陣營色跨實際並存組合皆過 ΔE>18', dEmin.m >= 18,
-   `最小 ${dEmin.m.toFixed(1)} (${dEmin.w});舊制為 6.5`);
+ok(`${dEmin.n} 個陣營:比鄰且同代者皆過 ΔE>18`, dEmin.m >= 18,
+   `最小 ${dEmin.m.toFixed(1)} (${dEmin.w});舊制九色為 6.5`);
+ok('不比鄰或不同代者亦過 ΔE>10', dEmin.mF >= 10, `最小 ${dEmin.mF.toFixed(1)} (${dEmin.wF})`);
 ok('明度確實拉開(舊制擠在 L* 65~77)', (dEmin.hi - dEmin.lo) >= 20,
    `L* ${dEmin.lo.toFixed(0)}~${dEmin.hi.toFixed(0)}`);
 
@@ -240,6 +252,76 @@ try{ ev('drawMap();'); }catch(e){ oldErr = e.message.slice(0,60); }
 ok('無相機欄位的舊檔可直接開圖', !oldErr && ev('__rec.length') > 20, oldErr || ev('__rec.length')+' 個文字');
 ok('舊檔的眾座標一個都沒動',
    ev(`__o.rivals.every((f,i)=> f.x === S.rivals[i].x && f.y === S.rivals[i].y)`), '');
+
+// ── 15. 第二期:八家新大名 ──
+g.startGame(g.newState('名試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+const WEST8 = ['asakura','rokkaku','azai','miyoshi','honganji','ashikaga','hatakeyama','kitabatake'];
+const lords = JSON.parse(ev(`JSON.stringify(aliveLords())`));
+ok('大名十三家俱在', lords.length === 13 && WEST8.every(k=>lords.includes(k)), lords.length + ' 家');
+ok('新大名皆有居城與史實重臣',
+   WEST8.every(k => ev(`!!LORD_META['${k}'] && LORD_VASSALS['${k}'] && LORD_VASSALS['${k}'].length >= 5
+                        && castlesOf('${k}').length >= 1`)), '');
+ok('新大名兵鋒及於其國與接壤',
+   ev(`lordReach('miyoshi').size`) >= 4 && ev(`lordReach('asakura').size`) >= 4,
+   `三好 ${ev(`lordReach('miyoshi').size`)} 國・朝倉 ${ev(`lordReach('asakura').size`)} 國`);
+ok('將軍家兵微而名重(國力最末,家格最高)',
+   ev(`lordPower('ashikaga') === Math.min(...aiLords().map(k=>lordPower(k)))`)
+   && ev(`HOUSE_MEI.ashikaga > Math.max(...Object.keys(HOUSE_MEI).filter(k=>k!=='ashikaga').map(k=>HOUSE_MEI[k]))`),
+   `國力 ${ev(`lordPower('ashikaga')`)}・家格 ${ev(`HOUSE_MEI.ashikaga`)}`);
+
+// ── 16. 西國三十四家眾 ──
+ok('眾共五十五家', ev('S.rivals.length') === 55, ev('S.rivals.length') + ' 家');
+ok('西國諸眾各有其國與接壤',
+   ev(`['saika','koga','kuki','jinbo','tsutsui','akamatsu'].every(id=>{
+        const f=S.rivals.find(x=>x.id===id); return !!(f && CLAN_PROV[id] && PROV_ADJ[CLAN_PROV[id]]); })`), '');
+ok('開局近國仍是十來家——擴圖不動開局體驗',
+   ev('S.rivals.filter(f=>f.alive && pdist(f)<=240).length') <= 20,
+   ev('S.rivals.filter(f=>f.alive && pdist(f)<=240).length') + ' 家在 240px 內');
+
+// ── 17. 四處新起始國 ──
+let regBad = '';
+for(const r of ['omi','iga','kii','echizen']){
+  g.startGame(g.newState('起試', 0, 'kokujin', 'gozoku', r));
+  ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+  const nb = ev('myNeighbors().length');
+  if(nb < 3){ regBad = `${r} 只有 ${nb} 家鄰居`; break; }
+  try{ ev('drawMap();'); }catch(e){ regBad = `${r} 開圖失敗:${e.message.slice(0,40)}`; break; }
+}
+ok('近江・伊賀・紀伊・越前皆可開局且有鄰', !regBad, regBad || '四處俱可');
+
+// ── 18. 惣無事令:上洛之後,不必逐家踏平 ──
+g.startGame(g.newState('令試', 0, 'kokujin', 'daimyo', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+ok('未入京則惣無事令不可下', ev('sobujiReady()') === null, '');
+ev(`S.isDaimyo=true; S.castles={nijo:'player'}; S.kokudaka=90000;
+    aiLords().forEach(k=>{ S.lords[k].demesne = 40000; });`);
+// 9000 石對 90000 石的玩家根本不算匹敵者——要真的有人能分庭抗禮才測得出這道閘
+ok('入京而尚有匹敵者,仍不可下', ev('sobujiReady()') === null,
+   `我 ${ev('playerPower()')} vs 最強他家 ${ev('Math.max(...aiLords().map(k=>lordPower(k)))')}`);
+ev(`aiLords().forEach(k=>{ S.lords[k].demesne = 900; });`);
+const ready = ev('sobujiReady()');
+ok('入京且勢壓群雄,可下惣無事令', !!(ready && ready.length),
+   ready ? ready.length + ' 家待服' : '仍不可下');
+ev(`modalQueue.length=0; checkUnification();`);
+ok('惣無事之議會送到面前', ev(`modalQueue.length > 0 && /惣無事/.test(modalQueue[0].title)`), '');
+ev(`S.money=99999; modalQueue[0].choices[0].fn();`);
+ok('一令而天下定', ev(`!!(S.flags && S.flags.unified)`)
+   && ev(`aiLords().filter(k=>!S.lords[k].submitted).length`) === 0, '');
+
+// ── 19. 舊檔遷移:補齊新大名與西國諸眾,舊有者一個不動 ──
+g.startGame(g.newState('遷試2', 0, 'kokujin', 'gozoku', 'mikawa'));
+const o2 = JSON.parse(ev('JSON.stringify(S)'));
+o2.rivals = o2.rivals.filter(f => ['saika','koga','kuki','jinbo'].indexOf(f.id) < 0).slice(0, 21);
+const keepXY = o2.rivals.map(f=>[f.id, f.x, f.y]);
+for(const k of WEST8) delete o2.lords[k];
+delete o2.cam;
+ev(`__m2 = migrate(${JSON.stringify(o2)});`);
+ok('舊檔補齊十三家大名', ev(`Object.keys(__m2.lords).length`) === 13, ev(`Object.keys(__m2.lords).length`)+' 家');
+ok('舊檔補齊五十五家眾', ev(`__m2.rivals.length`) === 55, ev(`__m2.rivals.length`)+' 家');
+ok('舊有之眾的座標一個都沒動',
+   ev(`${JSON.stringify(keepXY)}.every(function(e){ var f=__m2.rivals.find(function(r){return r.id===e[0];});
+        return !!f && f.x===e[1] && f.y===e[2]; })`), keepXY.length + ' 家原地不動');
 
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
