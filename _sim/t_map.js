@@ -127,11 +127,13 @@ const dEmin = JSON.parse(ev(`(()=>{
   const CAP = {imagawa:[730,300], oda:[190,340], saito:[120,120], tokugawa:[360,350],
     takeda:[780,120], nagao:[640,-230], toyotomi:[190,340], asakura:[-35,143],
     rokkaku:[-77,400], azai:[-39,290], miyoshi:[-277,489], honganji:[-303,542],
-    ashikaga:[-224,441], hatakeyama:[200,-178], kitabatake:[17,597]};
+    ashikaga:[-224,441], hatakeyama:[200,-178], kitabatake:[17,597],
+    hojo:[964,369], uesugi:[933,69], satomi:[1290,359], satake:[1447,-24]};
   const YR = {imagawa:[1545,1582], oda:[1545,1582], saito:[1545,1567], tokugawa:[1545,1615],
     takeda:[1545,1582], nagao:[1545,1615], toyotomi:[1582,1615], asakura:[1545,1573],
     rokkaku:[1545,1573], azai:[1545,1573], miyoshi:[1545,1577], honganji:[1545,1580],
-    ashikaga:[1545,1573], hatakeyama:[1545,1577], kitabatake:[1545,1576]};
+    ashikaga:[1545,1573], hatakeyama:[1545,1577], kitabatake:[1545,1576],
+    hojo:[1545,1590], uesugi:[1545,1562], satomi:[1545,1615], satake:[1545,1615]};
   const ks = Object.keys(fin);
   let mN = 1e9, wN = '', mF = 1e9, wF = '';
   for(let i=0;i<ks.length;i++) for(let j=i+1;j<ks.length;j++){
@@ -199,7 +201,9 @@ ok('12 年逐季重畫無誤且可存檔', !err, err || `至 ${g.S.year} 年`);
 
 // ── 10. 擴圖:世界範圍與相機 ──
 paint('界試', 'gozoku', 'mikawa', 0);
-ok('世界含括畿內至能登', ev('WORLD.x0') <= -438 && ev('WORLD.y0') <= -326 && ev('WORLD.y1') >= 925,
+ok('世界含括畿內至關東、能登至紀伊',
+   ev('WORLD.x0') <= -438 && ev('WORLD.x1') >= 1564
+   && ev('WORLD.y0') <= -326 && ev('WORLD.y1') >= 925,
    `x[${ev('WORLD.x0')},${ev('WORLD.x1')}] y[${ev('WORLD.y0')},${ev('WORLD.y1')}]`);
 ev('camTo(-9999,-9999)');
 const nw = JSON.parse(ev('JSON.stringify(S.cam)'));
@@ -216,12 +220,13 @@ ok('回本據使自家入窗', pp.x >= home.x && pp.x <= home.x + 900 && pp.y >=
 
 // ── 11. 窗開到哪,字就不該疊到哪 ──
 let panBad = '';
-for(const cam of [[-500,-340],[-460,180],[-300,600],[-160,100],[0,380],[200,-200],[0,0]]){
+for(const cam of [[-500,-340],[-460,180],[-300,600],[-160,100],[0,380],[200,-200],[0,0],
+                  [680,-340],[900,60],[1100,200],[680,380]]){
   paint('窗試', 'gozoku', 'mikawa', 25, cam);
   const b = overlaps();
   if(b.length && !panBad) panBad = `窗(${cam}): ${b[0]}`;
 }
-ok('七處視窗皆無疊字', !panBad, panBad || '含西北・畿內・紀伊・本據・東南');
+ok('十一處視窗皆無疊字', !panBad, panBad || '含西北・畿內・紀伊・本據・上野・武藏・房總');
 
 // ── 12. 新入之國的名要在該在的地方 ──
 paint('國試', 'gozoku', 'mikawa', 0, [-460, 180]);
@@ -258,7 +263,7 @@ g.startGame(g.newState('名試', 0, 'kokujin', 'gozoku', 'mikawa'));
 ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
 const WEST8 = ['asakura','rokkaku','azai','miyoshi','honganji','ashikaga','hatakeyama','kitabatake'];
 const lords = JSON.parse(ev(`JSON.stringify(aliveLords())`));
-ok('大名十三家俱在', lords.length === 13 && WEST8.every(k=>lords.includes(k)), lords.length + ' 家');
+ok('畿內北陸八家大名俱在', lords.length >= 13 && WEST8.every(k=>lords.includes(k)), lords.length + ' 家大名');
 ok('新大名皆有居城與史實重臣',
    WEST8.every(k => ev(`!!LORD_META['${k}'] && LORD_VASSALS['${k}'] && LORD_VASSALS['${k}'].length >= 5
                         && castlesOf('${k}').length >= 1`)), '');
@@ -271,7 +276,8 @@ ok('將軍家兵微而名重(國力最末,家格最高)',
    `國力 ${ev(`lordPower('ashikaga')`)}・家格 ${ev(`HOUSE_MEI.ashikaga`)}`);
 
 // ── 16. 西國三十四家眾 ──
-ok('眾共五十五家', ev('S.rivals.length') === 55, ev('S.rivals.length') + ' 家');
+ok('西國三十四家眾俱在', ev(`['saika','koga','kuki','jinbo','tsutsui','akamatsu','kyogoku','negoro'].every(id=>S.rivals.some(f=>f.id===id))`),
+   ev('S.rivals.length') + ' 家眾');
 ok('西國諸眾各有其國與接壤',
    ev(`['saika','koga','kuki','jinbo','tsutsui','akamatsu'].every(id=>{
         const f=S.rivals.find(x=>x.id===id); return !!(f && CLAN_PROV[id] && PROV_ADJ[CLAN_PROV[id]]); })`), '');
@@ -317,11 +323,65 @@ const keepXY = o2.rivals.map(f=>[f.id, f.x, f.y]);
 for(const k of WEST8) delete o2.lords[k];
 delete o2.cam;
 ev(`__m2 = migrate(${JSON.stringify(o2)});`);
-ok('舊檔補齊十三家大名', ev(`Object.keys(__m2.lords).length`) === 13, ev(`Object.keys(__m2.lords).length`)+' 家');
-ok('舊檔補齊五十五家眾', ev(`__m2.rivals.length`) === 55, ev(`__m2.rivals.length`)+' 家');
+ok('舊檔補齊十七家大名', ev(`Object.keys(__m2.lords).length`) === 17, ev(`Object.keys(__m2.lords).length`)+' 家');
+ok('舊檔補齊七十二家眾', ev(`__m2.rivals.length`) === 72, ev(`__m2.rivals.length`)+' 家');
 ok('舊有之眾的座標一個都沒動',
    ev(`${JSON.stringify(keepXY)}.every(function(e){ var f=__m2.rivals.find(function(r){return r.id===e[0];});
         return !!f && f.x===e[1] && f.y===e[2]; })`), keepXY.length + ' 家原地不動');
+
+// ── 20. 第三期:關東四家與十七家眾 ──
+g.startGame(g.newState('東試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+const EAST4 = ['hojo','uesugi','satomi','satake'];
+ok('大名十七家俱在', ev('aliveLords().length') === 17
+   && EAST4.every(k => ev(`aliveLords().indexOf('${k}') >= 0`)), ev('aliveLords().length') + ' 家');
+ok('關東四家皆有居城與史實重臣',
+   EAST4.every(k => ev(`!!LORD_META['${k}'] && LORD_VASSALS['${k}'] && LORD_VASSALS['${k}'].length >= 5
+                        && castlesOf('${k}').length >= 1`)), '');
+ok('眾共七十二家', ev('S.rivals.length') === 72, ev('S.rivals.length') + ' 家');
+ok('北條兵鋒及伊豆相模武藏', ev(`['izu','sagami','musashi'].every(p=>lordReach('hojo').has(p))`),
+   ev(`[...lordReach('hojo')].join(',')`));
+ok('關東諸眾在世界之內',
+   ev(`S.rivals.every(f => f.x >= WORLD.x0 && f.x <= WORLD.x1 && f.y >= WORLD.y0 && f.y <= WORLD.y1)`), '');
+ok('開局近國仍是十來家', ev('S.rivals.filter(f=>f.alive && pdist(f)<=240).length') <= 20,
+   ev('S.rivals.filter(f=>f.alive && pdist(f)<=240).length') + ' 家');
+
+// ── 21. 家臣初始三圍(二百局平均) ──
+const AV = [0,0,0,0];
+for(let i=0;i<200;i++){
+  const st = g.newState('圍'+i, 0, 'kokujin', 'gozoku', 'mikawa');
+  st.retainers.forEach((r,k)=>{ if(k<4) AV[k] += (r.bu + r.nai + r.chi)/3; });
+}
+const av = AV.map(v=>v/200);
+ok('家老・侍大將・徒士頭三圍平均近 80／75／70',
+   Math.abs(av[1]-80) < 3 && Math.abs(av[2]-75) < 3 && Math.abs(av[3]-70) < 3,
+   av.slice(1).map(v=>v.toFixed(1)).join(' / '));
+ok('當主三圍亦有提升(原 51.7)', av[0] > 62, av[0].toFixed(1));
+
+// ── 22. 音信:以智謀為主、內政為輔,只及鄰境 ──
+g.startGame(g.newState('音試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden'); S.money=9999;
+    S.retainers.forEach(r=>{ r.task='rest'; r.stamina=100; r.sick=0; });`);
+const relBefore = JSON.parse(ev(`JSON.stringify(S.rivals.map(f=>f.rel))`));
+const favBefore = JSON.parse(ev(`JSON.stringify(aiLords().map(k=>S.lords[k].favor||0))`));
+ev(`S.retainers[1].task='onshin'; S.retainers[1].chi=80; S.retainers[1].nai=70; resolveTasks();`);
+const up = ev(`S.rivals.filter((f,i)=> f.rel > ${JSON.stringify(relBefore)}[i]).length`);
+ok('音信使鄰境諸家關係普增', up >= 5, up + ' 家關係上升');
+ok('只及鄰境——遠方之眾不受音信',
+   ev(`S.rivals.filter((f,i)=> f.rel > ${JSON.stringify(relBefore)}[i] && pdist(f) > NEIGHBOR_R*1.3).length`) === 0, '');
+const favUp = ev(`aiLords().filter((k,i)=> (S.lords[k].favor||0) > ${JSON.stringify(favBefore)}[i]).length`);
+ok('兵鋒可及的大名好感亦增', favUp >= 2 && favUp < 17, favUp + ' 家好感上升(共 ' + ev('aiLords().length') + ' 家)');
+ok('遠方大名(北條)不受音信', ev('(S.lords.hojo.favor||0) === 0'),
+   `北條距 ${Math.round(ev(`lordDist('hojo')`))}px`);
+ok('音信要花錢', ev('S.money') === 9999 - 12, ev('S.money') + ' 貫');
+// 智謀高者效果較佳
+ev(`S.rivals.forEach((f,i)=>{ f.rel = ${JSON.stringify(relBefore)}[i]; });
+    S.money=9999; S.retainers[1].chi=40; S.retainers[1].nai=70; S.retainers[1].stamina=100; resolveTasks();`);
+const lowGain = ev(`S.rivals[0].rel - ${JSON.stringify(relBefore)}[0]`);
+ev(`S.rivals.forEach((f,i)=>{ f.rel = ${JSON.stringify(relBefore)}[i]; });
+    S.money=9999; S.retainers[1].chi=88; S.retainers[1].nai=70; S.retainers[1].stamina=100; resolveTasks();`);
+const hiGain = ev(`S.rivals[0].rel - ${JSON.stringify(relBefore)}[0]`);
+ok('智謀愈高,結好之效愈著', hiGain > lowGain, `智 40 → +${lowGain}／智 88 → +${hiGain}`);
 
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }

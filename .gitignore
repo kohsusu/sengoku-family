@@ -68,9 +68,11 @@ node_modules/
 # dataconnect generated files
 .dataconnect
 
-# 模擬測試台的產出(可重新產生,不必入庫)
-_sim/runs.json
+# 模擬測試台的產出(可重新產生,不必入庫;A/B 的存檔動輒上百 MB)
+_sim/runs*.json
 _sim/wars.json
+_sim/cooccur.json
+_sim/mapdata.json
 
 # 一次性補丁腳本與測試草稿
 _sim/patch_*.py

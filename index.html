@@ -593,7 +593,7 @@
 
 <script>
 'use strict';
-const BUILD = 'w1b';
+const BUILD = 'w1c';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -773,7 +773,10 @@ function newState(famName, kamon, clan, mode, region, scen){
             asakura:{demesne:2600, favor:0},  rokkaku:{demesne:2200, favor:0},
             azai:{demesne:900,  favor:0},     miyoshi:{demesne:3000, favor:0},
             honganji:{demesne:2400, favor:0}, ashikaga:{demesne:500,  favor:0},
-            hatakeyama:{demesne:1400, favor:0}, kitabatake:{demesne:1600, favor:0} },
+            hatakeyama:{demesne:1400, favor:0}, kitabatake:{demesne:1600, favor:0},
+            // 關東:北條氏康方張,山內上杉將傾,佐竹據常陸,里見擁安房之水軍
+            hojo:{demesne:4200, favor:0}, uesugi:{demesne:1800, favor:0},
+            satomi:{demesne:1200, favor:0}, satake:{demesne:1600, favor:0} },
     allegiance:null, hostage:null, warCd:4,
     year:1545, season:0,
     rice:300, money:50, pop:400, soldiers:20, prestige:10, minshin:60,
@@ -795,10 +798,12 @@ function newState(famName, kamon, clan, mode, region, scen){
     enkyoCd:0,          // 縁談回絕冷卻(季)
     gameOver:false,
     retainers:[
-      {name:famName+'彌一郎', role:'當主', kind:'一門', age:28, bu:52, nai:55, chi:48, task:'tonden', merit:0, salary:0,  loyalty:100, rank:0, stamina:100},
-      {name:'石川清兵衛',     role:'家老', kind:'譜代', age:45, bu:30, nai:68, chi:44, task:'farm',   merit:0, salary:34, loyalty:75,  rank:3, stamina:100},
-      {name:'鳥居半四郎',     role:'侍大將', kind:'譜代', age:33, bu:70, nai:26, chi:38, task:'drill', merit:0, salary:26, loyalty:72,  rank:2, stamina:100},
-      {name:'服部小平太',     role:'徒士頭', kind:'譜代', age:24, bu:48, nai:40, chi:60, task:'trade', merit:0, salary:18, loyalty:70,  rank:1, stamina:100}
+      // 五百石之家,地薄兵微,倚仗的正是這三個人。三圍平均約 80／75／70——
+      // 與史實重臣同級(太原雪齋 80.7・朝倉宗滴 82),是這一家唯一拿得出手的本錢。
+      {name:famName+'彌一郎', role:'當主', kind:'一門', age:28, bu:62, nai:66, chi:58, task:'tonden', merit:0, salary:0,  loyalty:100, rank:0, stamina:100},
+      {name:'石川清兵衛',     role:'家老', kind:'譜代', age:45, bu:64, nai:88, chi:88, task:'farm',   merit:0, salary:34, loyalty:75,  rank:3, stamina:100},
+      {name:'鳥居半四郎',     role:'侍大將', kind:'譜代', age:33, bu:88, nai:62, chi:75, task:'drill', merit:0, salary:26, loyalty:72,  rank:2, stamina:100},
+      {name:'服部小平太',     role:'徒士頭', kind:'譜代', age:24, bu:64, nai:66, chi:80, task:'trade', merit:0, salary:18, loyalty:70,  rank:1, stamina:100}
     ]
   };
   applyClan(st);
@@ -1001,6 +1006,9 @@ const TASKS = {
   trade: {name:'經商',     tire:10, hint:'販運特產獲利(依智謀與內政)。行商見聞亦積修練點(半速)。耗體力 10。'},
   fushin:{name:'精進(家業)',tire:15, hint:'鑽研治水・商政・武藝三道(依內政決定進度):修練點的正途,全速累積。得點後於「家業修練」擇技。花費 15 貫,耗體力 15。'},
   educate:{name:'教育子弟', tire:8,  hint:'教導家中 5~14 歲子女文武之道(依自身能力)。子女元服時的能力,取決於幼時所受的教育。耗體力 8。'},
+  onshin:{name:'音信(鄰好)', tire:8, hint:'遣使饋贈於鄰境諸家(依智謀為主、內政為輔;每季花 12 貫)。'
+    +'鄰眾關係普增、兵鋒可及的大名好感亦增——「音信」是戰國書札的正名:'
+    +'以書信與進物維繫鄰誼,不結盟、不稱臣,只是讓刀兵晚一點指向你。耗體力 8。'},
   toritsugi:{name:'取次(懷柔從屬)', tire:8, hint:'巡訪從屬眾,饋贈慰勉(依內政與智謀提升關係與信心;每季花 4 貫,偶得回禮)。關係深者國戰用命、不易離反。無從屬時空手而回。耗體力 8。'},
   kaiden:{name:'買田',     tire:8,  clan:'merchant', hint:'以錢買田置地(花費 40 貫,依內政,石高越高越貴)。商人以錢生地之道。耗體力 8。'},
   spy:   {name:'諜報',     tire:12, clan:'shinobi',  hint:'潛入番付最強的非姻親國人眾家中刺探破壞(依智謀):竊取錢財或毀其田畝;敗露則結怨。耗體力 12。'},
@@ -1303,9 +1311,17 @@ function fmtWhen(ts){
 function migrate(s){
   // 第二期擴圖:八家新大名(畿內・北陸・伊勢)。舊檔沒有它們,補上即可——
   // 座標原點沒動,故眾與城的 x,y 一個都不必改。
+  if(s && s.lords && !s.lords.hojo){
+    const E = {hojo:4200, uesugi:1800, satomi:1200, satake:1600};
+    for(const k in E) if(!s.lords[k]) s.lords[k] = {demesne:E[k], favor:0, bidate:0};
+  }
   if(s && s.rivals && !s.rivals.some(f=>f.id === 'saika')){
     const have = new Set(s.rivals.map(f=>f.id));
     for(const f of makeRivals0()) if(!have.has(f.id)) s.rivals.push(JSON.parse(JSON.stringify(f)));
+  }
+  if(s && s.rivals && !s.rivals.some(f=>f.id === 'miura')){      // 第三期:關東十七家
+    const have2 = new Set(s.rivals.map(f=>f.id));
+    for(const f of makeRivals0()) if(!have2.has(f.id)) s.rivals.push(JSON.parse(JSON.stringify(f)));
   }
   if(s && s.lords && !s.lords.asakura){
     const W = {asakura:2600, rokkaku:2200, azai:900, miyoshi:3000,
@@ -2260,7 +2276,27 @@ function makeRivals0(){
     // ── 紀伊眾(鐵砲傭兵と熊野水軍) ──
     {id:'saika',    name:'雜賀衆', seat:'雜賀莊', gun:'海部郡', x:-428, y:687, koku:880, prestige:22, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
     {id:'negoro',   name:'根來寺', seat:'根來', gun:'那賀郡', x:-379, y:659, koku:820, prestige:30, persona:'門徒', rel:0, marr:false, alive:true, lord:null, clanKind:'temple'},
-    {id:'kumano',   name:'熊野', seat:'新宮',   gun:'牟婁郡', x:-141, y:836, koku:600, prestige:18, persona:'海賊', rel:0, marr:false, alive:true, lord:null, clanKind:'suigun'}
+    {id:'kumano',   name:'熊野', seat:'新宮',   gun:'牟婁郡', x:-141, y:836, koku:600, prestige:18, persona:'海賊', rel:0, marr:false, alive:true, lord:null, clanKind:'suigun'},
+    // ── 上野・下野眾(關東管領治下,而諸將已各有打算) ──
+    {id:'naganokz', name:'長野', seat:'箕輪',   gun:'群馬郡', x:890, y:29, koku:900, prestige:22, persona:'武斷', rel:0, marr:false, alive:true, lord:'uesugi', clanKind:'kokujin'},
+    {id:'yura',     name:'由良', seat:'金山',   gun:'新田郡', x:1041, y:46, koku:760, prestige:14, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'obata',    name:'小幡', seat:'國峯',   gun:'甘樂郡', x:860, y:70, koku:620, prestige:12, persona:'武斷', rel:0, marr:false, alive:true, lord:'uesugi', clanKind:'kokujin'},
+    {id:'sano',     name:'佐野', seat:'唐沢山', gun:'安蘇郡', x:1120, y:31, koku:700, prestige:16, persona:'保守', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'utsunomiya',name:'宇都宮', seat:'宇都宮', gun:'河内郡', x:1219, y:-30, koku:980, prestige:34, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'yuki',     name:'結城', seat:'結城',   gun:'結城郡', x:1217, y:47, koku:820, prestige:26, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    // ── 武藏・相模眾(兩上杉與北條角力之地) ──
+    {id:'oishi',    name:'大石', seat:'川越',   gun:'入間郡', x:1080, y:163, koku:740, prestige:14, persona:'保守', rel:0, marr:false, alive:true, lord:'uesugi', clanKind:'kokujin'},
+    {id:'narita',   name:'成田', seat:'忍',     gun:'埼玉郡', x:1070, y:98, koku:680, prestige:16, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'iwatsuki', name:'岩付太田', seat:'岩付', gun:'足立郡', x:1156, y:154, koku:720, prestige:18, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'edota',    name:'江戶', seat:'江戶',   gun:'豐島郡', x:1174, y:237, koku:640, prestige:12, persona:'商業', rel:0, marr:false, alive:true, lord:'hojo', clanKind:'merchant'},
+    {id:'miura',    name:'三浦', seat:'三崎',   gun:'三浦郡', x:1126, y:403, koku:560, prestige:16, persona:'海賊', rel:0, marr:false, alive:true, lord:'hojo', clanKind:'suigun'},
+    // ── 常陸・下總・上總・安房眾 ──
+    {id:'oda_hi',   name:'小田', seat:'小田',   gun:'筑波郡', x:1295, y:100, koku:780, prestige:24, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'tagaya',   name:'多賀谷', seat:'下妻', gun:'真壁郡', x:1248, y:84, koku:600, prestige:10, persona:'武斷', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'kasama',   name:'笠間', seat:'笠間',   gun:'茨城郡', x:1345, y:25, koku:540, prestige:10, persona:'保守', rel:0, marr:false, alive:true, lord:'satake', clanKind:'kokujin'},
+    {id:'hara',     name:'原',   seat:'千葉',   gun:'千葉郡', x:1303, y:261, koku:700, prestige:20, persona:'名門', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'mariyatsu',name:'真里谷', seat:'真里谷', gun:'望陀郡', x:1270, y:329, koku:620, prestige:12, persona:'中立', rel:0, marr:false, alive:true, lord:null, clanKind:'kokujin'},
+    {id:'masaki',   name:'正木', seat:'佐貫',   gun:'天羽郡', x:1221, y:355, koku:580, prestige:10, persona:'海賊', rel:0, marr:false, alive:true, lord:'satomi', clanKind:'suigun'}
   ];
 }
 const KIND_LABEL = {kokujin:'國人', merchant:'商人', temple:'寺社', suigun:'水軍', shinobi:'忍'};
@@ -3184,12 +3220,26 @@ const CLAN_PROV = {mizuno:'mikawa', toda:'mikawa', kira:'mikawa', udono:'mikawa'
   ikeda:'settsu', itami:'settsu', yasumi:'kawachi', matsura:'izumi',
   tsutsui:'yamato', kofukuji:'yamato', ochi:'yamato', momochi:'iga', fujibayashi:'iga',
   seki:'ise', kanbe:'ise', naganoise:'ise', kuki:'shima',
-  saika:'kii', negoro:'kii', kumano:'kii'};
+  saika:'kii', negoro:'kii', kumano:'kii',
+  // 第三期:關東十七家
+  naganokz:'kozuke', yura:'kozuke', obata:'kozuke', sano:'shimotsuke',
+  utsunomiya:'shimotsuke', yuki:'shimousa', oishi:'musashi', narita:'musashi',
+  iwatsuki:'musashi', edota:'musashi', miura:'sagami', oda_hi:'hitachi',
+  tagaya:'hitachi', kasama:'hitachi', hara:'shimousa', mariyatsu:'kazusa', masaki:'kazusa'};
 const PROV_ADJ = {
   mino:['owari','shinano','omi','hida'], owari:['mino','mikawa','ise'],
-  mikawa:['owari','totomi'], totomi:['mikawa','suruga'], suruga:['totomi','kai'],
-  kai:['suruga','shinano'], shinano:['kai','mino','echigo','hida','etchu'],
-  echigo:['shinano','etchu'],
+  mikawa:['owari','totomi'], totomi:['mikawa','suruga'], suruga:['totomi','kai','izu','sagami'],
+  kai:['suruga','shinano','sagami','musashi'],
+  shinano:['kai','mino','echigo','hida','etchu','kozuke'],
+  echigo:['shinano','etchu','kozuke'],
+  // ── 第三期:關東十國 ──
+  izu:['sagami','suruga'], sagami:['izu','musashi','kai','suruga'],
+  musashi:['sagami','kozuke','shimotsuke','shimousa','kai'],
+  kozuke:['musashi','shinano','echigo','shimotsuke'],
+  shimotsuke:['kozuke','musashi','shimousa','hitachi'],
+  hitachi:['shimotsuke','shimousa'],
+  shimousa:['musashi','shimotsuke','hitachi','kazusa'],
+  kazusa:['shimousa','awa'], awa:['kazusa'],
   // ── 第二期:北陸・畿內・伊勢紀伊 ──
   hida:['mino','etchu','shinano'], etchu:['kaga','noto','hida','echigo'],
   noto:['kaga','etchu'], kaga:['echizen','noto','etchu'],
@@ -3205,6 +3255,18 @@ const PROV_ADJ = {
   ise:['omi','iga','yamato','shima','owari','mino','kii'],
   shima:['ise'], kii:['izumi','kawachi','yamato','ise']
 };
+// 大名的遠近:以其居城為準(長尾據春日山,於圖上在越後之北)
+function lordDist(key){
+  const CAP = {oda:'kiyosu', toyotomi:'kiyosu', imagawa:'sunpu', saito:'inabayama',
+               takeda:'tsutsujiga', tokugawa:'okazaki', asakura:'ichijodani',
+               rokkaku:'kannonji', azai:'odani', miyoshi:'akutagawa',
+               honganji:'ishiyama', ashikaga:'nijo', hatakeyama:'nanao',
+               kitabatake:'okochi', hojo:'odawara', uesugi:'hirai',
+               satomi:'kururi', satake:'ota'};
+  if(key === 'nagao') return rdist(playerPos(), {x:640, y:-230});
+  const c = CASTLES[CAP[key]];
+  return c ? rdist(playerPos(), c) : 9999;
+}
 function lordProvs(key){
   if(key === 'nagao') return ['echigo'];
   const po = provOwners();
@@ -4956,14 +5018,21 @@ const LORD_META = { // name 可被歷史事件改寫(松平→德川、羽柴→
   honganji:  {name:'本願寺', capital:'石山'},
   ashikaga:  {name:'足利',   capital:'二條'},
   hatakeyama:{name:'畠山',   capital:'七尾'},
-  kitabatake:{name:'北畠',   capital:'大河内'}
+  kitabatake:{name:'北畠',   capital:'大河内'},
+  // ── 第三期新入四家(關東) ──
+  hojo:  {name:'北條',     capital:'小田原'},
+  uesugi:{name:'山內上杉', capital:'平井'},
+  satomi:{name:'里見',     capital:'久留里'},
+  satake:{name:'佐竹',     capital:'太田'}
 };
 // 各大名的史實重臣(每年執行任務,推動國力成長)
 // 大名家中亦是封建:重臣各依階級持知行地(家老/侍大將/部將),大名僅直轄其餘
 const RANK_SHARE = {karo:0.13, shodai:0.085, busho:0.055};   // 知行=直轄總石高×份額
 // 開墾之效的家風修正。將軍家所領不過山城一隅,守護早已不聽號令——
 // 它的份量從來不在石高,而在名分,所以不能讓它跟著諸大名一起長。
-const LORD_GROW = {ashikaga:0.12, honganji:1.25, miyoshi:1.1, azai:1.1, hatakeyama:0.85};
+const LORD_GROW = {ashikaga:0.12, honganji:1.25, miyoshi:1.1, azai:1.1, hatakeyama:0.85,
+                   hojo:1.15,      // 檢地・目安箱・虎朱印——關東的治政冠於一時
+                   uesugi:0.55};   // 關東管領之名猶在,而諸將已不復聽命
 // (西國八家的重臣另立於 LORD_VASSALS_WEST,於其後併入)
 const RANK_LABEL = {karo:'家老', shodai:'侍大將', busho:'部將'};
 const LORD_VASSALS_WEST = {
@@ -4995,6 +5064,22 @@ const LORD_VASSALS_WEST = {
             {n:'溫井總貞',bu:66,nai:56,chi:70,rank:'shodai'},{n:'長綱連',bu:76,nai:52,chi:56,rank:'shodai'},
             {n:'平總知',bu:62,nai:54,chi:52,rank:'busho'},{n:'三宅長盛',bu:60,nai:58,chi:54,rank:'busho'},
             {n:'伊丹續堅',bu:64,nai:50,chi:50,rank:'busho'}],
+  hojo:    [{n:'松田憲秀',bu:66,nai:78,chi:70,rank:'karo'},{n:'北條綱成',bu:92,nai:52,chi:62,rank:'karo'},
+            {n:'大道寺政繁',bu:72,nai:76,chi:68,rank:'shodai'},{n:'遠山綱景',bu:70,nai:64,chi:66,rank:'shodai'},
+            {n:'板部岡江雪齋',bu:44,nai:80,chi:90,rank:'shodai'},{n:'富永直勝',bu:74,nai:56,chi:58,rank:'busho'},
+            {n:'笠原康勝',bu:68,nai:62,chi:60,rank:'busho'}],
+  uesugi:  [{n:'長尾景長',bu:72,nai:60,chi:64,rank:'karo'},{n:'大石定久',bu:66,nai:64,chi:60,rank:'karo'},
+            {n:'安中忠政',bu:70,nai:52,chi:54,rank:'shodai'},{n:'倉賀野行政',bu:64,nai:56,chi:58,rank:'shodai'},
+            {n:'藤田重利',bu:68,nai:58,chi:62,rank:'busho'},{n:'小幡憲重',bu:72,nai:50,chi:56,rank:'busho'},
+            {n:'白倉重家',bu:60,nai:54,chi:52,rank:'busho'}],
+  satomi:  [{n:'正木時茂',bu:90,nai:48,chi:58,rank:'karo'},{n:'里見義弘',bu:74,nai:66,chi:70,rank:'karo'},
+            {n:'正木時忠',bu:78,nai:52,chi:60,rank:'shodai'},{n:'加藤信景',bu:70,nai:58,chi:62,rank:'shodai'},
+            {n:'土岐為賴',bu:68,nai:56,chi:58,rank:'busho'},{n:'薄井政光',bu:62,nai:60,chi:56,rank:'busho'},
+            {n:'堀江賴忠',bu:66,nai:54,chi:58,rank:'busho'}],
+  satake:  [{n:'和田昭為',bu:60,nai:80,chi:84,rank:'karo'},{n:'小野崎義昌',bu:70,nai:62,chi:62,rank:'karo'},
+            {n:'真壁氏幹',bu:90,nai:42,chi:50,rank:'shodai'},{n:'江戶忠通',bu:68,nai:64,chi:66,rank:'shodai'},
+            {n:'大山義正',bu:66,nai:58,chi:56,rank:'busho'},{n:'車斯忠',bu:74,nai:46,chi:60,rank:'busho'},
+            {n:'梅津憲忠',bu:62,nai:66,chi:60,rank:'busho'}],
   kitabatake:[{n:'鳥屋尾滿榮',bu:62,nai:78,chi:80,rank:'karo'},{n:'木造具政',bu:66,nai:64,chi:60,rank:'karo'},
             {n:'日置大膳亮',bu:74,nai:52,chi:58,rank:'shodai'},{n:'澤房滿',bu:68,nai:58,chi:56,rank:'shodai'},
             {n:'家城之清',bu:76,nai:46,chi:52,rank:'busho'},{n:'秋山右近',bu:72,nai:48,chi:54,rank:'busho'},
@@ -5284,13 +5369,18 @@ const CASTLES = {
   nijo:      {name:'二條御所',x:-224,y:441, koku:300,  prov:'山城'},
   nanao:     {name:'七尾城',  x:200, y:-178,koku:700,  prov:'能登'},
   okochi:    {name:'大河内城',x:17,  y:597, koku:800,  prov:'伊勢'},
-  oyama:     {name:'尾山御坊',x:92,  y:-32, koku:900,  prov:'加賀'}
+  oyama:     {name:'尾山御坊',x:92,  y:-32, koku:900,  prov:'加賀'},
+  odawara:   {name:'小田原城',x:964, y:369, koku:1500, prov:'相模'},
+  hirai:     {name:'平井城',  x:933, y:69,  koku:800,  prov:'上野'},
+  kururi:    {name:'久留里城',x:1290,y:359, koku:600,  prov:'上總'},
+  ota:       {name:'太田城',  x:1447,y:-24, koku:800,  prov:'常陸'}
 };
 const CASTLE_OWNER0 = {kiyosu:'oda', okazaki:'imagawa', yoshida:'imagawa',
   hamamatsu:'imagawa', sunpu:'imagawa', inabayama:'saito', tsutsujiga:'takeda',
   ichijodani:'asakura', odani:'azai', kannonji:'rokkaku', akutagawa:'miyoshi',
   ishiyama:'honganji', oyama:'honganji', nijo:'ashikaga', nanao:'hatakeyama',
-  okochi:'kitabatake'};
+  okochi:'kitabatake',
+  odawara:'hojo', hirai:'uesugi', kururi:'satomi', ota:'satake'};
 function castleOwner(id){ return (S.castles && S.castles[id] !== undefined) ? S.castles[id] : CASTLE_OWNER0[id]; }
 function castlesOf(key){ return Object.keys(CASTLES).filter(id=>castleOwner(id)===key); }
 // 選定國戰目標:攻方挑守方的一座城(取其最弱者)
@@ -6038,8 +6128,10 @@ const DIPLO = {
 };
 // 家格名分(足利名門/守護 > 成り上がり)。將軍家獨居其上——兵微而名重,正是上洛之所圖。
 const HOUSE_MEI = {ashikaga:4, imagawa:3, takeda:3, hatakeyama:3, rokkaku:3, kitabatake:3,
-                   nagao:2, tokugawa:2, asakura:2, honganji:2,
-                   oda:1, saito:1, toyotomi:1, azai:1, miyoshi:1};
+                   uesugi:3, satake:3,                  // 關東管領・清和源氏
+                   nagao:2, tokugawa:2, asakura:2, honganji:2, satomi:2,
+                   oda:1, saito:1, toyotomi:1, azai:1, miyoshi:1,
+                   hojo:1};                             // 伊勢新九郎の成り上がり
 // 名分隨京都風雲而變:奉將軍上洛者名分大漲;幕府亡則名門光環半衰(名分改由實力與新政權背書)
 function houseMei(key){
   let m = HOUSE_MEI[key] || 1;
@@ -9683,6 +9775,39 @@ function resolveTasks(){
         log(`${r.name} 勤於農務,今年收成預估 +${gain.toFixed(1)}%。${tired}${grow(r,'nai')}`);
         break;
       }
+      case 'onshin': {
+        const cost = 12;
+        if(S.money < cost){ log(`${r.name}:囊中無物,音信之禮辦不起來。`,'bad'); break; }
+        // 結好之效以智謀為主(辭令與分寸)、內政為輔(禮數與帳目)
+        const pow = (r.chi * 0.55 + r.nai * 0.25) * eff;
+        const near = S.rivals.filter(f=> f.alive && f.lord !== 'player' && pdist(f) <= NEIGHBOR_R * 1.25);
+        const reach = aiLords().filter(k => S.lords[k].alive !== false && !S.lords[k].submitted
+                                         && lordDist(k) <= 420);
+        if(!near.length && !reach.length){
+          log(`${r.name}:四顧無鄰,音信無處可送。`); break;
+        }
+        S.money -= cost;
+        r.merit = (r.merit||0) + 1;
+        // 眾:普遍小增,最疏遠的一家另加厚禮(雪中送炭勝於錦上添花)
+        const g = Math.max(1, ri((1.2 + pow * 0.055)));
+        near.forEach(f => { f.rel = clamp(f.rel + g, -100, 100); });
+        let lead = '';
+        if(near.length){
+          const cold = near.reduce((a,b)=> a.rel <= b.rel ? a : b);
+          const extra = Math.max(1, ri(g * 1.4));
+          cold.rel = clamp(cold.rel + extra, -100, 100);
+          addOn(cold, 3);
+          lead = `,其中${fname(cold)}另致厚禮(關係 +${g + extra})`;
+        }
+        // 大名:兵鋒可及者好感亦增(半數之效——大名不是那麼容易打動的)
+        const lg = Math.max(1, ri(pow * 0.028));
+        reach.forEach(k => addFavor(S.lords[k], lg));
+        const lnames = reach.slice(0, 3).map(k => LORD_META[k].name).join('・');
+        log(`${r.name} 遣使音信於鄰境 ${near.length} 家(關係 +${g})${lead}`
+          + (reach.length ? `;${lnames}${reach.length > 3 ? '等' : ''}家好感 +${lg}` : '')
+          + `。${tired}${grow(r,'chi')}`);
+        break;
+      }
       case 'toritsugi': {
         const vs = myVassals();
         if(!vs.length){ log(`${r.name}:並無從屬之家,取次無從施行。`); break; }
@@ -12349,7 +12474,12 @@ const LORDC = {
   honganji:'#263702',  // 海松色 — 石山・加賀(一向宗兩處同色,本是一家)
   ashikaga:'#f3a27d',  // 赤香色 — 將軍家
   hatakeyama:'#77bc4f',// 若苗色 — 能登
-  kitabatake:'#ee8dbf' // 撫子色 — 伊勢(公家大名)
+  kitabatake:'#ee8dbf',// 撫子色 — 伊勢(公家大名)
+  // ── 第三期:關東四家 ──
+  hojo:'#01183c',      // 御納戸色 — 小田原
+  uesugi:'#ffa6ad',    // 白茶   — 山內上杉(關東管領,衰微之家)
+  satomi:'#16858f',    // 錆青磁 — 安房水軍
+  satake:'#ac5e00'     // 柿色   — 常陸
 };
 const MAP_PAPER = '#e9e0c6';                    // 和紙 L*89
 const MAP_SEA   = '#35495e';                    // 藍鼠 L*31——與紙差五十八階,全圖這才有最暗處
@@ -12362,25 +12492,37 @@ const PROV_WEST = {
   echizen:'asakura', kaga:'honganji', noto:'hatakeyama', etchu:'none', hida:'none',
   wakasa:'none', tango:'none', tanba:'none', harima:'none',
   omi:'rokkaku', yamashiro:'ashikaga', settsu:'miyoshi', kawachi:'none', izumi:'none',
-  yamato:'none', iga:'none', ise:'kitabatake', shima:'none', kii:'none'
+  yamato:'none', iga:'none', ise:'kitabatake', shima:'none', kii:'none',
+  // 關東:天文十四年,北條方張而兩上杉未潰;武藏正是三家角力之地
+  izu:'hojo', sagami:'hojo', musashi:'none', kozuke:'uesugi',
+  shimotsuke:'none', hitachi:'satake', shimousa:'none', kazusa:'none',
+  awa:'satomi', echigo:'nagao'
 };
 const PROV_WEST_TXT = {
   echizen:'朝倉家', kaga:'一向一揆', noto:'畠山家', etchu:'神保・椎名', hida:'姉小路家',
   wakasa:'武田(若狹)', tango:'一色家', tanba:'波多野家', harima:'赤松家',
   omi:'六角・淺井', yamashiro:'足利將軍家', settsu:'細川・三好', kawachi:'畠山家',
   izumi:'細川家', yamato:'筒井・興福寺', iga:'惣國一揆', ise:'北畠家',
-  shima:'九鬼家', kii:'畠山・雜賀'
+  shima:'九鬼家', kii:'畠山・雜賀',
+  izu:'北條家', sagami:'北條家', musashi:'兩上杉・北條', kozuke:'山內上杉',
+  shimotsuke:'宇都宮・小山', hitachi:'佐竹家', shimousa:'千葉・結城',
+  kazusa:'真里谷・正木', awa:'里見家', echigo:'長尾家'
 };
 const PROV_NAME_WEST = {
   echizen:'越前', kaga:'加賀', noto:'能登', etchu:'越中', hida:'飛驒', wakasa:'若狹',
   tango:'丹後', tanba:'丹波', harima:'播磨', omi:'近江', yamashiro:'山城', settsu:'攝津',
-  kawachi:'河内', izumi:'和泉', yamato:'大和', iga:'伊賀', ise:'伊勢', shima:'志摩', kii:'紀伊'
+  kawachi:'河内', izumi:'和泉', yamato:'大和', iga:'伊賀', ise:'伊勢', shima:'志摩', kii:'紀伊',
+  izu:'伊豆', sagami:'相模', musashi:'武藏', kozuke:'上野', shimotsuke:'下野',
+  hitachi:'常陸', shimousa:'下總', kazusa:'上總', awa:'安房', echigo:'越後'
 };
 const PROV_POS_WEST = {
   noto:[212,-238], etchu:[300,-132], kaga:[96,-66], echizen:[-104,92], wakasa:[-214,244],
   hida:[268,-6], omi:[-78,262], tanba:[-320,366], yamashiro:[-214,404], settsu:[-318,494],
   kawachi:[-260,556], izumi:[-320,596], yamato:[-176,540], iga:[-92,490], ise:[36,476],
-  shima:[168,640], kii:[-250,700], harima:[-452,480], tango:[-372,330]
+  shima:[168,640], kii:[-250,700], harima:[-452,480], tango:[-372,330],
+  izu:[893,461], sagami:[1033,323], musashi:[1068,171], kozuke:[893,18],
+  shimotsuke:[1208,-43], hitachi:[1382,34], shimousa:[1330,171],
+  kazusa:[1330,339], awa:[1243,430], echigo:[771,-256]
 };
 function provOwners(){
   const done = id => S.histDone && S.histDone.includes(id);
@@ -12506,7 +12648,8 @@ function _drawInfluenceRaw(c, R){
                       takeda:'tsutsujiga', tokugawa:'okazaki',
                       asakura:'ichijodani', rokkaku:'kannonji', azai:'odani',
                       miyoshi:'akutagawa', honganji:'ishiyama', ashikaga:'nijo',
-                      hatakeyama:'nanao', kitabatake:'okochi'};
+                      hatakeyama:'nanao', kitabatake:'okochi',
+                      hojo:'odawara', uesugi:'hirai', satomi:'kururi', satake:'ota'};
     // 一向宗兩處:石山與加賀的尾山御坊本是一家,故本願寺多一個源點
     if(S.lords && S.lords.honganji && S.lords.honganji.alive !== false && !S.lords.honganji.submitted){
       const oy = CASTLES.oyama;
@@ -12664,7 +12807,9 @@ const MAP_W = 900, MAP_H = 560;                 // 視窗(畫布)大小——不
 // **原點刻意不動**——西與北只是負座標,舊存檔的 x,y 一個都不必改;
 // 比例尺(327 px/度)也不動,故 pdist / NEIGHBOR_R / inStrikeRange 等
 // 以像素為單位的距離門檻,原封不動仍然成立。
-const WORLD = {x0:-500, y0:-340, x1:900, y1:940};      // 1400 × 1280,現圖的 3.6 倍
+// 第三期東擴至關東(銚子 140.87°E)。西達攝津播磨,東至房總銚子,
+// 北抵能登禄剛崎,南及紀伊潮岬——本州中央一氣呵成。
+const WORLD = {x0:-500, y0:-340, x1:1580, y1:940};    // 2080 × 1280,原圖的 5.3 倍
 // (新國的名與位已移入 PROV_NAME_WEST / PROV_POS_WEST,隨 provStatus 更新領有者)
 const camClampX = x => Math.max(WORLD.x0, Math.min(WORLD.x1 - MAP_W, x));
 const camClampY = y => Math.max(WORLD.y0, Math.min(WORLD.y1 - MAP_H, y));
@@ -12796,8 +12941,29 @@ function drawMap(){
     ctx.quadraticCurveTo( 246, -94,  285, -73);                   // 富山灣頭
     ctx.quadraticCurveTo( 400,-118,  509,-149);                   // 越中東岸・親不知
     ctx.quadraticCurveTo( 580,-190,  649,-220);                   // 直江津
-    ctx.quadraticCurveTo( 780,-262,    W,-300);                   // 越後(東切邊)
-    ctx.lineTo(W,392);                                            // 相模灘東端
+    ctx.quadraticCurveTo( 700,-248,  757,-278);                   // 柏崎
+    ctx.quadraticCurveTo( 810,-312,  858,-339);                   // 越後北岸出北界
+    ctx.lineTo(W, WORLD.y0);                                      // 北切邊(陸奧出羽在界外)
+    ctx.lineTo(W, -150);                                          // 東切邊
+    // ── 東岸・太平洋(常陸→鹿島灘→房總→江戶灣→三浦→相模灣) ──
+    ctx.quadraticCurveTo(1530, -70, 1483,  -8);                   // 日立
+    ctx.quadraticCurveTo(1472,  10, 1470,  46);                   // 那珂湊・大洗
+    ctx.quadraticCurveTo(1478,  96, 1491, 150);                   // 鹿島
+    ctx.quadraticCurveTo(1540, 182, 1564, 223);                   // 銚子(東突端)
+    ctx.quadraticCurveTo(1498, 252, 1442, 287);                   // 九十九里濱
+    ctx.quadraticCurveTo(1412, 340, 1372, 400);                   // 勝浦
+    ctx.quadraticCurveTo(1300, 452, 1222, 476);                   // 野島崎(房總突端)
+    ctx.quadraticCurveTo(1210, 466, 1215, 452);                   // 館山
+    ctx.quadraticCurveTo(1206, 400, 1208, 351);                   // 富津(江戶灣口)
+    ctx.quadraticCurveTo(1276, 300, 1298, 259);                   // 江戶灣東岸・千葉
+    ctx.quadraticCurveTo(1270, 228, 1236, 226);                   // 市川
+    ctx.quadraticCurveTo(1196, 232, 1173, 256);                   // 品川(江戶)
+    ctx.quadraticCurveTo(1166, 312, 1162, 369);                   // 江戶灣西岸・浦賀
+    ctx.quadraticCurveTo(1146, 396, 1127, 403);                   // 三浦突端
+    ctx.quadraticCurveTo(1110, 374, 1103, 351);                   // 鎌倉
+    ctx.quadraticCurveTo(1060, 344, 1019, 351);                   // 大磯
+    ctx.quadraticCurveTo(  990, 358, 963, 369);                   // 小田原
+    ctx.lineTo(900, 392);                                         // 相模灘(接回既有伊豆一段)
     ctx.quadraticCurveTo(862,400,836,414);                        // 相模灣岸
     ctx.quadraticCurveTo(828,452,816,502);                        // 伊豆東岸
     ctx.quadraticCurveTo(806,536,790,544);                        // 伊豆突端(石廊崎)
@@ -13151,7 +13317,7 @@ function drawMap(){
     c.fillStyle = 'rgba(238,228,203,.72)';
     c.textAlign = 'center';
     if(k.x > WORLD.x0 + 2)          c.fillText('◀ 西 · 畿內', 58, MAP_H/2);
-    if(k.x < WORLD.x1 - MAP_W - 2)  c.fillText('東 ▶', MAP_W-40, MAP_H/2);
+    if(k.x < WORLD.x1 - MAP_W - 2)  c.fillText('東 · 關東 ▶', MAP_W-58, MAP_H/2);
     if(k.y > WORLD.y0 + 2)          c.fillText('▲ 北 · 北陸', MAP_W/2, 18);
     if(k.y < WORLD.y1 - MAP_H - 2)  c.fillText('▼ 南 · 紀伊', MAP_W/2, MAP_H-8);
     c.textAlign = 'left';
