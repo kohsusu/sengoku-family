@@ -544,7 +544,7 @@
 
 <script>
 'use strict';
-const BUILD = 'art1';
+const BUILD = 'art2';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1722,13 +1722,31 @@ function drawFace(c, cx, cy, r, p){
   }
   c.restore();
 }
+let _faceCache = new Map();   // 純函式快取:drawFace 以姓名為種子,同參數必同圖
 function faceCanvas(p, size){
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const key = [p && p.name, size, dpr, p && p.age, p && p.sick, p && p.role, p && p.kind,
+               p && p.sex, p && p.trait, S && S.clanType].join('|');
+  const blit = src => {   // canvas 的 cloneNode 不會複製點陣內容,必須重繪一次(仍遠省於重跑 drawFace)
+    const o = document.createElement('canvas');
+    o.width = src.width; o.height = src.height;
+    o.style.width = size + 'px'; o.style.height = size + 'px'; o.style.verticalAlign = 'middle';
+    o.getContext('2d').drawImage(src, 0, 0);
+    return o;
+  };
+  const hit = _faceCache.get(key);
+  if(hit) return blit(hit);
   const cv = document.createElement('canvas');
-  cv.width = size; cv.height = size;
+  cv.width = Math.round(size*dpr); cv.height = Math.round(size*dpr);
+  cv.style.width = size + 'px'; cv.style.height = size + 'px';
   cv.style.verticalAlign = 'middle';
-  drawFace(cv.getContext('2d'), size/2, size/2 + size*0.04, size*0.46,
-    Object.assign({clanTemple: S.clanType==='temple'}, p));
-  return cv;
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawFace(c, size/2, size/2 + size*0.04, size*0.46,
+    Object.assign({clanTemple: S && S.clanType==='temple'}, p));
+  if(_faceCache.size > 240) _faceCache.clear();
+  _faceCache.set(key, cv);
+  return blit(cv);
 }
 
 // ---------- 技能樹:治水(水利)・商政(商路) ----------
@@ -7459,12 +7477,37 @@ function ksTryKillHex(foeS, ev){
   ev.push(`☠【討取】亂軍之中,${foeS.vname} 為我軍所斬!${LORD_META[KS.target] ? `——${LORD_META[KS.target].name}家自此少一柱石。` : ''}`);
 }
 // 盤面繪卷
+// 盤面畫布:常駐 canvas,backing store 依 DPR 與實際版面寬放大——原本是 toDataURL 成 <img>
+// 再被 CSS 拉寬,等於 3 倍以上的上採樣,部隊字必糊;且每刻重編碼一次 PNG。
+function ksHexCtx(W, HH){
+  const bd = $('hxBoard');
+  if(!bd) return null;
+  let cv = bd.querySelector('canvas.bfield');
+  if(!cv){
+    cv = document.createElement('canvas');
+    cv.className = 'bfield';
+    cv.style.cursor = 'pointer';
+    cv.title = '點部隊看詳細屬性';
+    cv.onclick = ksHexBoardClick;
+    bd.innerHTML = '';
+    bd.appendChild(cv);
+  }
+  const cssW = bd.clientWidth || W;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const k = Math.max(1, (cssW / W) * dpr);          // 邏輯座標 → 裝置像素
+  const bw = Math.round(W * k), bh = Math.round(HH * k);
+  if(cv.width !== bw || cv.height !== bh){ cv.width = bw; cv.height = bh; }
+  const c = cv.getContext('2d');
+  c.setTransform(k, 0, 0, k, 0, 0);                 // 之後全照原本的邏輯座標畫
+  c.clearRect(0, 0, W, HH);
+  return c;
+}
 function ksHexImg(){
   if(!KS || !KS.hex) return '';
   const wide = KS && KS.hexWide;
   const SZ = wide ? 24 : 17, W = wide ? 680 : 480, HH = wide ? 580 : 420;
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = HH;
-  const c = cv.getContext('2d');
+  const c = ksHexCtx(W, HH);
+  if(!c) return '';
   c.fillStyle = '#e7ddc0'; c.fillRect(0,0,W,HH);
   c.fillStyle = 'rgba(150,165,105,.25)'; c.fillRect(0,0,W,HH);
   const cx = (col,row)=> SZ + 6 + SZ*1.732*(col + 0.5*(row&1));
@@ -7489,9 +7532,32 @@ function ksHexImg(){
       c.beginPath(); c.ellipse(x,y,4.5,2.5,0,0,7); c.stroke(); }
     if(t==='ford'){ c.fillStyle='rgba(130,120,95,.9)';
       [[-5,0],[0,-3],[5,1],[1,4]].forEach(p=>{ c.beginPath(); c.arc(x+p[0],y+p[1],1.8,0,7); c.fill(); }); }
-    if(t==='stream'){ c.strokeStyle='rgba(90,130,160,.55)'; c.lineWidth=1.2;
-      c.beginPath(); c.moveTo(x-7,y-3); c.quadraticCurveTo(x-2,y-6,x+3,y-3); c.stroke();
-      c.beginPath(); c.moveTo(x-6,y+3); c.quadraticCurveTo(x-1,y,x+5,y+3); c.stroke(); }
+    if(t==='stream' || t==='river'){
+      // 水系:先朝每個相鄰水格拉一段,鄰格彼此接續才讀得出「一條川」(原本逐格各畫兩道弧,接不起來)
+      const big = (t==='river');
+      c.strokeStyle = big ? 'rgba(52,104,140,.75)' : 'rgba(90,130,160,.6)';
+      c.lineWidth = big ? SZ*0.46 : SZ*0.2;
+      c.lineCap = 'round';
+      let linked = 0;
+      for(let dr=-1; dr<=1; dr++) for(let dc=-2; dc<=2; dc++){
+        const nc = col+dc, nr = r+dr;
+        if((dc===0&&dr===0) || nr<0 || nr>=HXROWS || nc<0 || nc>=HXCOLS) continue;
+        if(hxDist({c:col,r}, {c:nc,r:nr}) !== 1) continue;
+        const nt = hxTile(nc,nr);
+        if(nt!=='stream' && nt!=='river') continue;
+        linked++;
+        c.beginPath(); c.moveTo(x,y);
+        c.lineTo((x + cx(nc,nr))/2, (y + cy(nr))/2);   // 只畫到交界,兩格各畫一半即成連續
+        c.stroke();
+      }
+      if(!linked){ c.beginPath(); c.arc(x,y, big ? SZ*0.34 : SZ*0.2, 0, 7); c.stroke(); }
+      if(big){   // 大川:水面浪紋,示其不可輕涉
+        c.strokeStyle='rgba(255,255,255,.35)'; c.lineWidth=1;
+        c.beginPath(); c.moveTo(x-SZ*0.4,y-2); c.quadraticCurveTo(x,y-6,x+SZ*0.4,y-2); c.stroke();
+        c.beginPath(); c.moveTo(x-SZ*0.35,y+4); c.quadraticCurveTo(x,y+1,x+SZ*0.35,y+4); c.stroke();
+      }
+      c.lineCap = 'butt';
+    }
     if(t==='forest'){ c.fillStyle='rgba(58,88,44,.75)';
       [[-5,2],[1,-3],[5,4]].forEach(p=>{ c.beginPath();
         c.moveTo(x+p[0]-3,y+p[1]+3); c.lineTo(x+p[0],y+p[1]-4); c.lineTo(x+p[0]+3,y+p[1]+3); c.closePath(); c.fill(); }); }
@@ -7499,8 +7565,46 @@ function ksHexImg(){
       c.fillRect(x-6,y-3,12,8);
       c.beginPath(); c.moveTo(x-8,y-3); c.lineTo(x,y-10); c.lineTo(x+8,y-3); c.closePath(); c.fill(); }
   }
-  // 交戰標記:接戰對之間畫紅光與⚔
+  // 合圍標記:被兩隊以上夾擊者,外環朱線+各攻擊者射入短箭——引擎的核心加成(×1.28/隊)原本完全不可見
   if(KS.hex.clash && KS.hex.clash.length){
+    const gang = {};   // 與引擎的 gangOn 同義:此格參與了幾組接戰
+    const key = (cc,rr)=> cc+','+rr;
+    for(const f2 of KS.hex.clash){
+      gang[key(f2.ac,f2.ar)] = (gang[key(f2.ac,f2.ar)]||0) + 1;
+      gang[key(f2.bc,f2.br)] = (gang[key(f2.bc,f2.br)]||0) + 1;
+    }
+    for(const k in gang){
+      if(gang[k] < 2) continue;
+      const [gc, gr] = k.split(',').map(Number);
+      const gx = cx(gc,gr), gy = cy(gr);
+      const u = KS.hex.units.find(z=>z.c===gc && z.r===gr && !z.s.broke);
+      const mine = u && u.side === 'my';
+      c.strokeStyle = mine ? 'rgba(60,80,140,.85)' : 'rgba(176,42,30,.9)';   // 我軍被圍=藍警,敵軍被圍=朱喜
+      c.lineWidth = 2.2; c.setLineDash([4,3]);
+      c.beginPath(); c.arc(gx, gy, SZ*0.94, 0, 7); c.stroke();
+      c.setLineDash([]);
+      for(const f2 of KS.hex.clash){
+        const self = (f2.ac===gc && f2.ar===gr);
+        if(!self && !(f2.bc===gc && f2.br===gr)) continue;
+        const ox = self ? cx(f2.bc,f2.br) : cx(f2.ac,f2.ar);
+        const oy = self ? cy(f2.br) : cy(f2.ar);
+        const a2 = Math.atan2(gy-oy, gx-ox);
+        const sx = gx - Math.cos(a2)*SZ*1.25, sy = gy - Math.sin(a2)*SZ*1.25;
+        const ex = gx - Math.cos(a2)*SZ*1.0,  ey = gy - Math.sin(a2)*SZ*1.0;
+        c.lineWidth = 2.4;
+        c.beginPath(); c.moveTo(sx,sy); c.lineTo(ex,ey); c.stroke();
+        c.beginPath();
+        c.moveTo(ex,ey);
+        c.lineTo(ex - Math.cos(a2-0.5)*5, ey - Math.sin(a2-0.5)*5);
+        c.lineTo(ex - Math.cos(a2+0.5)*5, ey - Math.sin(a2+0.5)*5);
+        c.closePath();
+        c.fillStyle = mine ? 'rgba(60,80,140,.9)' : 'rgba(176,42,30,.95)';
+        c.fill();
+      }
+      c.fillStyle = mine ? 'rgba(60,80,140,.95)' : 'rgba(176,42,30,.95)';
+      c.font = 'bold 10px "Noto Serif TC",serif';
+      c.fillText('圍' + gang[k], gx - SZ*0.9, gy - SZ*0.78);
+    }
     for(const f2 of KS.hex.clash){
       const x1 = cx(f2.ac, f2.ar), y1 = cy(f2.ar), x2 = cx(f2.bc, f2.br), y2 = cy(f2.br);
       c.strokeStyle = 'rgba(190,60,40,.5)'; c.lineWidth = 3;
@@ -7548,8 +7652,8 @@ function ksHexImg(){
   }
   c.fillStyle = 'rgba(58,47,36,.8)';
   c.font = '10px "Noto Serif TC","PMingLiU",serif';
-  c.fillText('朱=我軍　紺=敵軍　金框=本陣　▲林=矢彈不及・不可衝鋒　〰小川=水中不利', 8, HH-6);
-  return `<img class="bfield" src="${cv.toDataURL()}" onclick="ksHexBoardClick(event)" style="cursor:pointer" title="點部隊看詳細屬性">`;
+  c.fillText('朱=我軍　紺=敵軍　金框=本陣　▲林=矢彈不及　水色=川(粗=大川不可渡)　虛圈圍n=遭 n 隊合圍', 8, HH-6);
+  return '';   // 直接畫在常駐 canvas 上
 }
 // 即時盤上指揮:持續畫面——戰局自動推進,軍令隨時可改,可暫停/加速/委任
 function ksHexStTxt(st){
@@ -7594,7 +7698,7 @@ function ksHexCtrlHtml(){
 function ksHexRedraw(full){
   if(!KS || !KS.hex) return;
   const bd = $('hxBoard');
-  if(bd) bd.innerHTML = ksHexImg();
+  if(bd) ksHexImg();
   const ct = $('hxCtrl');
   if(ct) ct.innerHTML = ksHexCtrlHtml();
   const mine = KS.hex.units.filter(u=>u.side==='my' && !u.s.broke);
@@ -10881,6 +10985,7 @@ function taskFit(r){
   return tags;
 }
 function render(){
+  if(!S) return;   // 合戰體驗(關原)無遊戲狀態:modal 點擊一律走到這裡,原本每次都拋 TypeError
   { const ab = $('adviceBox');
     if(ab){ const adv = adviceText();
       if(adv){ ab.style.display = ''; ab.innerHTML = '<div class="cardTitle">軍配者の助言</div><b>' + adv[0] + '</b><div class="dim" style="margin-top:3px">' + adv[1] + '</div>'; }
@@ -11902,7 +12007,36 @@ function provStatus(){
   }
   return out;
 }
+let _inflCache = null;   // {sig, cv}
+function inflSig(){
+  const r = (S.rivals||[]).filter(f=>f.alive)
+    .map(f=>f.id+':'+f.koku+':'+(f.lord||'-')+':'+ri(f.x)+','+ri(f.y)).join('|');
+  const l = Object.keys(S.lords||{}).map(k=>k+':'+(S.lords[k].alive===false?'x':ri(S.lords[k].demesne||0))
+    +':'+(S.lords[k].submitted?'s':'-')).join('|');
+  const h = (S.holds||[]).join(',');
+  return r+'#'+l+'#'+h+'#'+S.kokudaka+'#'+(S.allegiance||'-')+'#'+(S.isDaimyo?'d':'-')+'#'+S.year;
+}
 function drawInfluence(c){
+  if(!S.rivals) return;
+  const sig = inflSig();
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  if(_inflCache && _inflCache.sig === sig && _inflCache.dpr === dpr){
+    c.save(); c.setTransform(1,0,0,1,0,0);
+    c.drawImage(_inflCache.cv, 0, 0);
+    c.restore();
+    return;
+  }
+  const lay = document.createElement('canvas');
+  lay.width = Math.round(MAP_W*dpr); lay.height = Math.round(MAP_H*dpr);
+  const lc = lay.getContext('2d');
+  lc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  _drawInfluenceRaw(lc);
+  _inflCache = {sig, dpr, cv:lay};
+  c.save(); c.setTransform(1,0,0,1,0,0);
+  c.drawImage(lay, 0, 0);
+  c.restore();
+}
+function _drawInfluenceRaw(c){
   if(!S.rivals) return;
   // 全圖劃分:每一寸土地依「居城位置×石高」歸於某家——大名直轄亦為源點,無主之境盡屬最近之家
   const CELL = 5, X0 = 20, X1 = 880, Y0 = 26, Y1 = 560, CUT = 0.02;
@@ -12005,9 +12139,15 @@ function drawInfluence(c){
   c.strokeStyle = 'rgba(48,38,26,.62)'; c.lineWidth = 2.0; seg(true);    // 跨陣營:大名的邊境
   c.restore();
 }
+const MAP_W = 900, MAP_H = 560;
 function drawMap(){
-  const cv = $('map'), c = cv.getContext('2d');
-  const W = cv.width, H = cv.height;
+  const cv = $('map'); if(!cv) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const want = Math.round(MAP_W*dpr);
+  if(cv.width !== want){ cv.width = want; cv.height = Math.round(MAP_H*dpr); }
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);           // 之後全照 900×560 邏輯座標畫
+  const W = MAP_W, H = MAP_H;
   // 海(青海波紋)
   c.fillStyle = '#729cb2';
   c.fillRect(0,0,W,H);
