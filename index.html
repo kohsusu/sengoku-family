@@ -540,7 +540,7 @@
 
 <script>
 'use strict';
-const BUILD = 'p2b';
+const BUILD = 'p3a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -4770,8 +4770,23 @@ const GECHI = {
   seibatsu:{name:'征伐令', icon:'🔥', cost:2, fit:['heidon','kyohei'], persona:{'武斷':16,'海賊':12,'保守':-14,'門徒':-18},
             desc: f => { const t = gechiFoe(f); return t ? `命其伐${fname(t)}(來春見真章;侵略之名 +6)` : '四鄰無可伐者'; }},
   kazou:   {name:'加增(恩賞)', icon:'🎁', cost:0, fit:null, gift:true,
-            desc: f => `割我 ${ri(Math.max(40, S.kokudaka*0.02))} 石與之:信心 +12・關係 +10`}
+            desc: f => `割我 ${ri(Math.max(40, S.kokudaka*0.02))} 石與之:信心 +12・關係 +10`},
+  // ── 權力政治:治大國若烹小鮮,然坐大之臣不可不制 ──
+  wabok:   {name:'和睦令', icon:'🕊', cost:1, fit:null, hard:5,
+            avail: f => !!gechiFeudMate(f),
+            desc: f => { const t = gechiFeudMate(f); return t ? `令其與${fname(t)}罷鬥釋怨(兩家信心 +4・威望 +2)` : '其與同僚並無宿怨'; }},
+  hitojichi:{name:'徵人質', icon:'🏯', cost:1, fit:null, hard:-10,
+            avail: f => !f.hostage,
+            desc: f => `取其子為質於我城:信心 -10、關係 -8——然自此難以背反(順從 +12)`},
+  tenpou:  {name:'移封(轉封)', icon:'📦', cost:2, fit:null, hard:-18,
+            desc: f => `徙其家於新地:石高 -${ri(f.koku*0.12)}、城砦 -1、舊怨舊盟俱斷;信心 -18`},
+  bunpou:  {name:'分封(削其半)', icon:'✂', cost:2, fit:null, hard:-26,
+            desc: f => `割其地 ${ri(f.koku*0.30)} 石入我直轄:信心 -25・關係 -15(削藩之舉,其心必怨)`}
 };
+// 和睦令的對象:同為我旗下而彼此有宿怨者
+function gechiFeudMate(f){
+  return myVassals().find(x=> x !== f && (rGrudge(f, x.id) >= 15 || rGrudge(x, f.id) >= 15)) || null;
+}
 // 順從度:信心為本,關係恩義為輔,合其評定則用命——庸主連自家從屬都指使不動
 function gechiObey(f, key){
   const G = GECHI[key]; if(!G) return 0;
@@ -4780,6 +4795,8 @@ function gechiObey(f, key){
          + Math.min(S.prestige, 150)*0.05 + (S.kani||0)*3
          + (fit ? 18 : (G.fit ? -14 : 0))
          + ((G.persona && G.persona[f.persona]) || 0)
+         + (G.hard || 0)                      // 重令自有其阻力(移封・削藩尤甚)
+         + (f.hostage ? 12 : 0)               // 質子在我,不敢不從
          - gechiYearN(f)*11;   // 使民以時:一年之內屢下知,人心自厭
   if(G.gift) sc = 100;                       // 恩賞豈有不受之理
   return clamp(ri(sc), 0, 100);
@@ -4829,6 +4846,45 @@ function doGechi(f, key){
       f.rel = clamp(f.rel - 6, -100, 100);
       if(hasKakun('minpon')) violateKakun('橫徵暴斂於從屬');
       log(`💰 ${fname(f)}獻金 ${g} 貫${tag}(信心 -7・關係 -6)。`); break; }
+    case 'wabok': {
+      const t = gechiFeudMate(f);
+      if(t){
+        if(f.grudge) delete f.grudge[t.id];
+        if(t.grudge) delete t.grudge[f.id];
+        f.ltrust = clamp((f.ltrust ?? 60) + 4, 0, 100);
+        t.ltrust = clamp((t.ltrust ?? 60) + 4, 0, 100);
+        gainPrestige(2);
+        log(`🕊 主命之下,${fname(f)}與${fname(t)}於庭前釋怨——惣無事之令行矣(兩家信心 +4・威望 +2)。`,'good');
+      }
+      break; }
+    case 'hitojichi': {
+      f.hostage = true;
+      f.ltrust = clamp((f.ltrust ?? 60) - 10, 0, 100);
+      f.rel = clamp(f.rel - 8, -100, 100);
+      log(`🏯 ${fname(f)}遣其子入我城為質${tag}——其心雖怨,然自此不敢輕言背反。`); break; }
+    case 'tenpou': {
+      const cut = ri(f.koku * 0.12 * (lv === 'full' ? 1 : 0.6));
+      f.koku = Math.max(150, f.koku - cut);
+      f.fort = Math.max(0, (f.fort||0) - 1);
+      f.grudge = {}; f.allies = []; f.pactVs = null; f.aimAt = null;
+      S.rivals.forEach(x=>{ if(x.grudge) delete x.grudge[f.id]; if(x.allies) x.allies = x.allies.filter(id=>id!==f.id); });
+      f.plan = null; rivalPlan(f, null);
+      f.ltrust = clamp((f.ltrust ?? 60) - 18, 0, 100);
+      log(`📦 ${fname(f)}奉命移封${tag}——去其世居之地,舊怨舊盟一朝俱斷(石高 -${cut}・城砦 -1・信心 -18)。`,'bad');
+      break; }
+    case 'bunpou': {
+      const cut = ri(f.koku * 0.30 * (lv === 'full' ? 1 : 0.6));
+      f.koku = Math.max(150, f.koku - cut);
+      S.kokudaka += cut;
+      f.ltrust = clamp((f.ltrust ?? 60) - 25, 0, 100);
+      f.rel = clamp(f.rel - 15, -100, 100);
+      addGrudge(f, 'player', 12);
+      log(`✂ 削${fname(f)}之封 ${cut} 石入我直轄${tag}——削藩者,自古皆結怨(信心 -25・關係 -15)。`,'bad');
+      if((f.ltrust ?? 60) < 30 && !f.hostage && Math.random() < 0.3){
+        f.lord = null;
+        log(`⚡ ${fname(f)}憤而去之:「主家既不能容,某自去矣!」——脫離從屬!`,'bad');
+      }
+      break; }
     case 'seibatsu': {
       const t = gechiFoe(f);
       if(t && !(S.rumors||[]).some(r=>r.who===f.id)){
@@ -4852,7 +4908,7 @@ function renderGechi(){
     `<span class="dim" style="font-weight:normal;font-size:12px">　順其評定則用命,逆其志則陽奉陰違</span></div>`;
   mine.forEach((f, i)=>{
     const lt = f.ltrust ?? 60;
-    const keys = Object.keys(GECHI);
+    const keys = Object.keys(GECHI).filter(k => !GECHI[k].avail || GECHI[k].avail(f));
     const sel = `<select id="gsel_${i}">` + keys.map(k=>{
       const G = GECHI[k];
       return `<option value="${k}">${G.icon} ${G.name}${G.cost?`(${G.cost})`:'(恩)'}</option>`;
@@ -9881,13 +9937,63 @@ function winterSettle(){
       lines.push(`從屬眾之役(${detail.join('、')}):米 ${trib} 石・錢 ${gold} 貫`+
         (teppo?`・鐵砲 ${teppo} 挺`:'')+(mind?`・民心 +${mind}`:'')+(intelN?`・諸國情報(料敵先機)`:'')+
         `,威望 +${mine.length}。`);
+      // ── 重臣坐大:昔日大名如何待你,今日你便如何待人 ──
+      if(!S.gameOver){
+        const big = mine.filter(f=> score(f) >= playerScore()*0.5 && (f.ltrust ?? 60) < 78);
+        if(big.length && Math.random() < 0.4){
+          const f = big.reduce((a,b)=> score(b) > score(a) ? b : a);
+          const cut = ri(f.koku*0.30), give = ri(Math.max(40, S.kokudaka*0.03));
+          queueModal({title:`⚖ 重臣坐大——${fname(f)}`,
+            body:`評定之席上,老臣低聲進言:\n\n「${fname(f)}今有 ${f.koku} 石之地、${rSol(f)} 之眾,`+
+              `較主家已及${(score(f)/Math.max(1,playerScore())*100).toFixed(0)}分。其信心 ${f.ltrust ?? 60}——`+
+              `${(f.ltrust ?? 60) < 45 ? '近來頗有怨言,恐生異志。' : '雖未見異志,然尾大不掉,古之戒也。'}」\n\n`+
+              `——當年${S.allegiance||S.henki ? '主家待你,亦是這般光景。' : '諸國大名待其重臣,皆須解此題。'}`,
+            choices:[
+              {label:`🎁 加增安撫(割 ${give} 石)`, sub:'信心 +14・關係 +8;然其勢益張', fn:()=>{
+                if(S.kokudaka - give < 200){ log('自家領地已薄,無地可封。','bad'); return; }
+                S.kokudaka -= give; f.koku += give;
+                f.ltrust = clamp((f.ltrust ?? 60)+14, 0, 100);
+                f.rel = clamp(f.rel+8, -100, 100);
+                log(`加增${fname(f)} ${give} 石以安其心(信心 +14)——養虎與養士,只在一念之間。`,'good');
+              }},
+              {label:`✂ 削其封(取 ${cut} 石)`, sub:'石高 +' + cut + ';信心 -25、關係 -15,恐生變', fn:()=>{
+                f.koku = Math.max(150, f.koku - cut); S.kokudaka += cut;
+                f.ltrust = clamp((f.ltrust ?? 60)-25, 0, 100);
+                f.rel = clamp(f.rel-15, -100, 100);
+                addGrudge(f, 'player', 12);
+                log(`✂ 削${fname(f)}之封 ${cut} 石——削藩既行,怨亦隨之(信心 -25)。`,'bad');
+              }},
+              {label:'🏯 徵其子為質', sub:'信心 -10,然自此難背反', fn:()=>{
+                f.hostage = true;
+                f.ltrust = clamp((f.ltrust ?? 60)-10, 0, 100);
+                log(`${fname(f)}遣子入質——恩威之間,質子最實。`);
+              }},
+              {label:'坐視', sub:'不動聲色;其勢自張', fn:()=>{
+                f.ltrust = clamp((f.ltrust ?? 60)-2, 0, 100);
+                log(`主君默然不語——${fname(f)}之勢,姑且由之。`);
+              }}
+            ]});
+        }
+      }
       for(const f of mine){
         if(f.marr || f.pact) continue;
         // 名望繫人心:主家有名,從屬眾不輕言去
-        if(playerScore() < score(f)*1.1 && Math.random() < Math.max(0.02, 0.10 - meiboHold()*0.12)){
+        // 去留繫於「信心」與「勢」——與 AI 大名的從屬同用一套(原本兩套模型互不相干)
+        const lt = f.ltrust ?? 60;
+        const pw = score(f) / Math.max(1, playerScore());
+        const pOut = clamp(0.015
+          + Math.max(0, 45 - lt) * 0.006          // 離心者思去
+          + Math.max(0, pw - 0.8) * 0.10          // 勢大者不甘居人下
+          - meiboHold() * 0.12                    // 主家有名,眾不輕言去
+          - (f.hostage ? 0.05 : 0), 0, 0.35);     // 質子在我
+        if(Math.random() < pOut){
           f.lord = null;
           f.rel = clamp(f.rel-10,-100,100);
-          lines.push(`⚡ ${fname(f)}見${S.famName}家勢衰,脫離從屬自立!`);
+          if(f.hostage){ f.hostage = false; linFate && linFate(fname(f)+'之質子', '背主而質子見殺'); }
+          const why = lt < 30 ? `積怨既深,${fname(f)}終於掛冠而去`
+                    : pw >= 1 ? `${fname(f)}勢已凌主,遂脫羈絆而自立`
+                    : `${fname(f)}見${S.famName}家勢衰,脫離從屬自立`;
+          lines.push(`⚡ ${why}!(信心 ${lt})`);
         }
       }
     }
@@ -10619,6 +10725,7 @@ const INTRO_TIPS = [
  ['gungi',    /國戰軍議/,      '軍議:選大將、手動調四兵種數量(可少帶省糧),戰力數字即時可見——兵種與大將專精相合,戰力方能盡出。'],
  ['gunhyo',   /軍評定——/,      '軍評定:軍師三案各有勝算與損兵,數字是軍師「所見」——智略愈高愈準,庸才會看走眼。選案後可再調兵。'],
  ['gechi',    /下知/,          '下知:從屬眾各有評定方針——順其志者欣然用命,逆其志者陽奉陰違。威令每季有限(官位・家老・取次奉行可增),恩賞(加增)則不費威令。'],
+ ['ozake',    /重臣坐大/,      '坐大之臣:當年大名如何猜忌你,今日你便要如何待人。加增養其心、削封挫其勢、取質束其身、坐視養其虎——四者皆有代價。'],
  ['fbsai',    /布陣調整/,      '布陣:表頭「殘」為各兵種餘額,調畢即開戰。開戰後全軍自動進退,士氣轉折時你有唯一一次采配——按鈕在下方行動列。'],
  ['fujin',    /布陣——/,        '布陣:先鋒攻高受損亦高;本陣崩則全軍潰;殿不參戰,可由采配投入。'],
  ['shokaku',  /昇格/,          '昇格:五眾各有成為大名之路,條件湊齊,亂世的門就開了。'],
