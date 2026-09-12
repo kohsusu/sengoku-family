@@ -50,27 +50,27 @@ save = function(){};
 // ── 玩家性格 ──
 const NUKE = /新的家史|重新開始/;
 const PERSONAS = [
- {name:'農本', tasks:['tonden','farm','fushin','educate','farm'],
+ {name:'農本', tasks:['tonden','farm','fushin','educate','onshin'],
   sk:['suiri.tameike','suiri.shinden','suiri.kanbatsu','suiri.teibou','suiri.suisha','suiri.yousui',
       'suiri.nimou','suiri.shuun','trade.komeya','trade.bashaku','bugei.yarifusuma','bugei.choren'],
   like:/屯田|開墾|農|水利|救濟|開倉|不趁人之危|婉拒|辭謝|原禮|忍辱|求和|息事|受降|安堵|贈禮|說法|祈禱|坐視|據實|領命|承襲|休養|招民|固守/,
   hate:/根切|海賊|夜襲|謀反|抗命|斷然拒絕|舉兵|趁虛|隱田|逃散|自立/, tax:0},
- {name:'武斷', tasks:['drill','drill','tonden','hunt','drill'],
+ {name:'武斷', tasks:['drill','drill','tonden','onshin','drill'],
   sk:['bugei.choren','bugei.yarifusuma','bugei.yumigumi','bugei.kiba','bugei.teppogumi','bugei.jindate',
       'bugei.futaiten','bugei.gunbai','suiri.tameike','suiri.shinden','trade.bashaku','suiri.kanbatsu'],
   like:/練兵|操練|出兵|討伐|進軍|迎擊|突擊|傾力|力攻|割地|根切|先鋒|突出|趁虛|舉兵|據城迎擊|開戰|魚鱗/,
   hate:/求和|息事|忍辱|退讓|婉拒|堅壁|開城降伏|撤圍|罷兵/, tax:1},
- {name:'商賈', tasks:['trade','trade','tonden','rakuichi','educate'],
+ {name:'商賈', tasks:['trade','trade','tonden','rakuichi','onshin'],
   sk:['trade.bashaku','trade.komeya','trade.zayaku','trade.kaido','trade.goyou','trade.honai',
       'trade.teppoya','trade.karamono','suiri.tameike','suiri.shinden','suiri.kanbatsu','bugei.yarifusuma'],
   like:/經商|商|買田|樂市|廻船|借銀|御用金|如數|受之|贈禮|取引|海運|求和|納貢|遠戰/,
   hate:/根切|謀反|出兵|討伐|舉兵/, tax:1},
- {name:'忠臣', tasks:['tonden','drill','farm','toritsugi','fushin'],
+ {name:'忠臣', tasks:['tonden','drill','farm','onshin','fushin'],
   sk:['suiri.tameike','bugei.yarifusuma','suiri.shinden','bugei.choren','trade.bashaku','suiri.kanbatsu',
       'bugei.yumigumi','suiri.teibou','bugei.jindate','trade.komeya','suiri.suisha','bugei.kiba'],
   like:/傾力|領命|應召|臣從|請求臣從|獻|安堵|偏諱|據實|先鋒|斷後|協調|受降|援軍|迎擊|昇格|雁行/,
   hate:/謀反|自立|抗命|拒絕|通款|密約|隱田|抜け駆け|絕緣/, tax:1},
- {name:'野心', tasks:['drill','tonden','spy','trade','drill'],
+ {name:'野心', tasks:['drill','tonden','onshin','trade','drill'],
   sk:['bugei.choren','bugei.yarifusuma','trade.bashaku','bugei.yumigumi','bugei.kiba','bugei.teppogumi',
       'suiri.tameike','bugei.jindate','trade.komeya','suiri.shinden','bugei.gunbai','trade.zayaku'],
   like:/謀反|自立|通款|密約|隱田|抜け駆け|絕緣|勧誘|壓迫|諜報|流言|出兵|討伐|趁虛|根切|昇格|迫使|迂迴/,
@@ -186,6 +186,33 @@ function household(P, rec){
       drain(P, rec);
     }
   }
+  // ── 勧誘:招鄰家為從屬眾 ──
+  // 這是遊戲的主要擴張機制,而模擬台從來沒按過那顆鈕(前八十局中位從屬眾 0 家,
+  // 差點被當成遊戲的事實報出去)。實際玩家會做,量測台就得做。
+  if(S.money >= 60 && Math.random() < 0.5){
+    const cand = ev(`(()=>{ const v=myVassals().length, cap=vassalCap();
+      if(v >= cap) return null;
+      const ok = S.rivals.filter(f=> f.alive && f.lord !== 'player' && f.persona !== '門徒'
+        && f._kanyuAt !== S.year && inStrikeRange(f)
+        && playerScore()/score(f) >= 1.5 && f.rel >= 30);
+      if(!ok.length) return null;
+      ok.sort((a,b)=> b.koku - a.koku);
+      return ok[0].id; })()`);
+    if(cand){
+      sandbox.openRival(cand);
+      let n3 = 0;
+      while(!$('modalBack').classList.contains('hidden') && n3++ < 12){
+        const btns = [...$('modalChoices').querySelectorAll('button')];
+        const k = btns.find(b => /^勧誘/.test(b.textContent));
+        if(k){ k.click(); break; }
+        const close = btns.find(b => /^(退下|告辭|罷了|……|領命)/.test(b.textContent));
+        if(close){ close.click(); break; }
+        $('modalBack').classList.add('hidden'); break;
+      }
+      $('modalBack').classList.add('hidden');
+      drain(P, rec);
+    }
+  }
   // 招民(人口是石高的天花板)
   if(S.money >= 400 && Math.random() < 0.3){ sandbox.doBoshu(); drain(P, rec); }
   // 主動出兵討伐:武斷/野心玩家的核心循環——兵強糧足就打最弱的鄰家
@@ -285,6 +312,29 @@ for(let seed = 0; seed < N; seed++){
       g.endSeason();
       rec.decisions += drain(P, rec);
       if(i % 2 === 0) audit(g.S, rec, g.S.year+'-'+g.S.season);
+      { // 觸及範圍:一局裡玩家實際打得到／收得到的家數(擴圖之後最該問的一個數)
+        const t = ev(`(()=>{ let n=0, far=0;
+          for(const f of S.rivals){ if(!f.alive) continue;
+            if(inStrikeRange(f) || pdist(f)<=NEIGHBOR_R || f.lord==='player'){ n++; far=Math.max(far,pdist(f)); } }
+          const ld = aiLords().filter(k=>lordDist(k)<=420).length;
+          return JSON.stringify([n, Math.round(far), ld]); })()`);
+        const [n2, far, ld] = JSON.parse(t);
+        rec.touch = Math.max(rec.touch||0, n2);
+        rec.far = Math.max(rec.far||0, far);
+        rec.touchL = Math.max(rec.touchL||0, ld);
+        // 勧誘的兩道閘各自擋掉多少:家格 ≥1.5 倍、關係 ≥30
+        const gt = ev(`(()=>{ const inR = S.rivals.filter(f=>f.alive && f.lord!=='player'
+            && f.persona!=='門徒' && inStrikeRange(f));
+          const r1 = inR.filter(f=> playerScore()/score(f) >= 1.5).length;
+          const r2 = inR.filter(f=> f.rel >= 30).length;
+          const both = inR.filter(f=> playerScore()/score(f) >= 1.5 && f.rel >= 30).length;
+          return JSON.stringify([inR.length, r1, r2, both]); })()`);
+        const [inR, r1, r2, both] = JSON.parse(gt);
+        rec.gInR = Math.max(rec.gInR||0, inR);
+        rec.gRatio = Math.max(rec.gRatio||0, r1);
+        rec.gRel = Math.max(rec.gRel||0, r2);
+        rec.gBoth = Math.max(rec.gBoth||0, both);
+      }
       if(g.S.gameOver) break;
     }
   }catch(e){
