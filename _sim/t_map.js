@@ -383,6 +383,63 @@ ev(`S.rivals.forEach((f,i)=>{ f.rel = ${JSON.stringify(relBefore)}[i]; });
 const hiGain = ev(`S.rivals[0].rel - ${JSON.stringify(relBefore)}[0]`);
 ok('智謀愈高,結好之效愈著', hiGain > lowGain, `智 40 → +${lowGain}／智 88 → +${hiGain}`);
 
+// ── 23. 史實軸:西國與關東的興亡 ──
+const EVT = ['kawagoe','hirai_fall','kanto_kanrei','anegawa','ichijodani','mise','nanao_fall','ishiyama'];
+ok('八個新事件俱在史實軸上',
+   ev(`${JSON.stringify(EVT)}.every(id => HISTORY.some(h => h.id === id))`),
+   ev('HISTORY.length') + ' 個事件');
+ok('事件年代合於史實',
+   ev(`HISTORY.find(h=>h.id==='kawagoe').y === 1546
+    && HISTORY.find(h=>h.id==='hirai_fall').y === 1552
+    && HISTORY.find(h=>h.id==='ichijodani').y === 1573
+    && HISTORY.find(h=>h.id==='ishiyama').y === 1580`), '');
+
+// 跑滿一甲子,看諸家是否依序而亡、且各記其「亡於誰手」
+g.startGame(g.newState('軸試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+let histErr = '';
+for(let i=0;i<60*4;i++){
+  try{ g.endSeason(); }catch(e){ histErr = e.message.slice(0,60); break; }
+  ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+  if(g.S.gameOver) break;
+}
+ok('一甲子跑完無誤', !histErr, histErr || `至 ${g.S.year} 年`);
+const fell = JSON.parse(ev(`JSON.stringify(Object.keys(S.lords).filter(k=>S.lords[k].alive===false))`));
+ok('西國關東諸家依史實而亡',
+   ['rokkaku','asakura','azai','ashikaga','kitabatake','hatakeyama','honganji','uesugi','hojo']
+     .filter(k => fell.indexOf(k) >= 0).length >= 7,
+   fell.length + ' 家亡');
+ok('每一家都記得亡於誰手',
+   ev(`Object.keys(S.lords).filter(k=>S.lords[k].alive===false).every(k=>!!S.lords[k].slainBy)`), '');
+ok('亡於他人之手者,其地不歸玩家',
+   ev(`(()=>{ const P=provStatus();
+        return !['omi','echizen','noto','musashi','kozuke'].some(p => P[p] && P[p].owner === 'player'); })()`),
+   ev(`['omi','echizen','noto'].map(p=>provStatus()[p].owner).join('/')`));
+ok('國名副題隨主更易(舊題名不再作數)',
+   ev(`provStatus().omi.txt.indexOf('六角') < 0`), '近江現題 ' + ev(`provStatus().omi.txt`));
+ok('未易主之國仍留舊題名',
+   ev(`provStatus().iga.txt === '惣國一揆' && provStatus().yamato.txt === '筒井・興福寺'`), '');
+
+// ── 24. 你改寫過的歷史,史筆不再動 ──
+g.startGame(g.newState('改試', 0, 'kokujin', 'daimyo', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');
+    S.lords.asakura.submitted = true; S.lords.rokkaku.submitted = true;
+    S.year = 1573; S.season = 2;`);
+ev(`HISTORY.find(h=>h.id==='ichijodani').fn();`);
+ok('已臣服於你的大名,不為史實所滅',
+   ev(`S.lords.asakura.alive !== false`), '朝倉已臣服,一乘谷之役不及於它');
+// 上一次呼叫已經把淺井滅了,得先讓它復活,否則這條測的是上一條的殘留
+ev(`modalQueue.length=0; S.lords.oda.alive = false; S.lords.oda.slainBy = 'player';
+    S.lords.azai.alive = true; delete S.lords.azai.slainBy;
+    S.lords.azai.submitted = false; S.year = 1573;`);
+const before = ev(`S.lords.azai.alive !== false`);
+ev(`HISTORY.find(h=>h.id==='ichijodani').fn();`);
+ok('勝者已亡,則此役不發生(織田若為你所滅,小谷城不會落)',
+   before && ev(`S.lords.azai.alive !== false`), '');
+ok('史實之滅亦不奪你已得之地',
+   ev(`provStatus().owari.owner === 'player' || provStatus().owari.owner === 'oda'`),
+   '尾張 ' + ev(`provStatus().owari.owner`));
+
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
 console.log(n?'✗ 有未過':'全部通過');

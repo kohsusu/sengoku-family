@@ -593,7 +593,7 @@
 
 <script>
 'use strict';
-const BUILD = 'w1c';
+const BUILD = 'h1a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -8614,7 +8614,7 @@ function lastCastle(key){
       }},
       {label:'根切り——滅其家名', sub:`${T.name}家斷絕、從屬眾離散;威望 -5、民心 -6、諸大名戒懼`, fn:()=>{
         castlesOf(key).forEach(id=>{ S.castles[id] = 'player'; });   // 殘城盡歸勝者
-        S.lords[key].alive = false;
+        S.lords[key].alive = false; S.lords[key].slainBy = 'player';
         S.rivals.filter(f=>f.alive && f.lord===key).forEach(f=>{ f.lord = null; });
         S.prestige = Math.max(0, S.prestige-5);
         S.minshin = clamp(S.minshin-6,0,100);
@@ -8866,7 +8866,102 @@ function punitiveWar(lordKey){
 
 // ---------- 歷史事件軸(1548~1615 固定軌道) ----------
 function hMod(title, body, choices){ queueModal({title, body, choices: choices || [{label:'……', fn:()=>{}}]}); }
+// 史實上的一家滅亡:記其亡於誰手、殘城與從屬眾隨之易主、其地半入勝者。
+// 三道保險——已亡者不再滅、已臣服於你者史筆不及(你改寫了歷史)、勝者自身已亡則此役不發生。
+function histFall(key, to){
+  const L = S.lords && S.lords[key];
+  if(!L || L.alive === false || L.submitted) return false;
+  const T = S.lords && S.lords[to];
+  if(to !== 'player' && (!T || T.alive === false)) return false;
+  L.alive = false; L.slainBy = to;
+  if(!S.castles) S.castles = {};
+  castlesOf(key).forEach(id => { S.castles[id] = to; });
+  // 一家既亡,其從屬眾多半隨新主——朝倉之臣泰半歸織田,而非四散於野。
+  // 原為五五之數,使得史實軸一開,無主之眾遍地,野心家坐收其利(中位石高 +67%)。
+  S.rivals.filter(f => f.alive && f.lord === key)
+          .forEach(f => { f.lord = Math.random() < 0.72 ? to : null; });
+  if(T) T.demesne = ri((T.demesne || 0) + (L.demesne || 0) * 0.6);
+  return true;
+}
 const HISTORY = [
+ // ── 關東 ──
+ {y:1546, s:1, id:'kawagoe', fn:()=>{
+   const H = S.lords.hojo, U = S.lords.uesugi;
+   if(!H || H.alive === false) return;
+   if(U && U.alive !== false && !U.submitted) U.demesne = ri(U.demesne * 0.6);
+   H.demesne += 400;
+   hMod('【史】河越夜戰(1546)','兩上杉與古河公方合兵八萬,圍河越城半年。\n'
+     + '城中北條綱成僅三千——四月二十日之夜,氏康率八千人銜枚夜襲。\n\n'
+     + '「不取首級,只管衝殺。」\n\n八萬之眾一夕崩潰,關東的霸權自此易主。\n'
+     + '(北條直轄 +400;山內上杉大損)');
+ }},
+ {y:1552, s:2, id:'hirai_fall', fn:()=>{
+   const fell = histFall('uesugi', 'hojo');
+   const G = S.lords.nagao;
+   if(fell && G && G.alive !== false){ G.demesne += 200; S.flags.kanreiToNagao = true; }
+   hMod('【史】上杉憲政、越後へ奔る(1552)',
+     fell ? '北條氏康拔平井城。關東管領上杉憲政棄上野,奔越後投長尾景虎——\n\n'
+          + '管領之職、上杉之名、關東之望,盡託於那個二十三歲的年輕人。\n'
+          + '日後「軍神」出關東,種子就埋在這一年。\n(山內上杉斷絕;長尾得名分與遺臣)'
+          : '上野的局勢仍在拉鋸——平井城,這一年未落。');
+ }},
+ {y:1561, s:0, id:'kanto_kanrei', fn:()=>{
+   const G = S.lords.nagao, H = S.lords.hojo;
+   if(!G || G.alive === false) return;
+   G.demesne += 150;
+   if(H && H.alive !== false && !H.submitted) H.wounds = clamp((H.wounds||0) + 0.15, 0, 0.65);
+   hMod('【史】長尾景虎、關東管領を繼ぐ(1561)',
+     '景虎率十萬關東聯軍圍小田原,於鶴岡八幡宮受關東管領之職,改名上杉政虎。\n\n'
+     + '——然小田原城終未能下。聯軍散去,北條依舊盤踞相模。\n'
+     + '名分到手了,土地沒有。\n(長尾直轄 +150;北條戰創 +15%)');
+ }},
+ // ── 西國 ──
+ {y:1570, s:2, id:'anegawa', fn:()=>{
+   const Z = S.lords.azai, K = S.lords.asakura;
+   if((!Z || Z.alive === false) && (!K || K.alive === false)) return;
+   if(Z && Z.alive !== false && !Z.submitted) Z.demesne = ri(Z.demesne * 0.6);
+   if(K && K.alive !== false && !K.submitted) K.demesne = ri(K.demesne * 0.75);
+   if(S.lords.oda && S.lords.oda.alive !== false) S.lords.oda.demesne += 200;
+   hMod('【史】姉川の戰(1570)','淺井長政叛信長,與朝倉合兵於姉川——\n'
+     + '織田德川聯軍鏖戰終日,德川勢橫擊朝倉之側而破之。\n\n'
+     + '姻親反目,信長的背後從此多了一把刀;而那把刀,今日鈍了。\n(淺井大損・朝倉受挫)');
+ }},
+ {y:1573, s:2, id:'ichijodani', fn:()=>{
+   const a = histFall('asakura', 'oda'), z = histFall('azai', 'oda');
+   if(!a && !z) return;
+   hMod('【史】一乘谷・小谷落城(1573)','八月,信長先破朝倉於刀根坂,\n'
+     + '一乘谷五代百年的文華,付之一炬。\n\n'
+     + '九月,小谷城落。淺井長政自刃,其妻於市與三女出城——\n'
+     + '那三個女孩之中的長女,日後叫做淀殿。\n'
+     + '(朝倉・淺井俱亡,其地半入織田)');
+ }},
+ {y:1576, s:3, id:'mise', fn:()=>{
+   if(!histFall('kitabatake', 'oda')) return;
+   hMod('【史】三瀬の變(1576)','信長之子信雄入嗣北畠,而後於三瀬御所弒其養父具教。\n\n'
+     + '北畠具教是塚原卜傳的高弟,傳說臨終斬十九人而後死。\n'
+     + '南朝以來二百年的伊勢國司,就這樣絕了。\n(伊勢入織田)');
+ }},
+ {y:1577, s:2, id:'nanao_fall', fn:()=>{
+   if(!histFall('hatakeyama', 'nagao')) return;
+   hMod('【史】七尾城落(1577)','上杉謙信圍七尾。城中疫病流行,重臣遊佐續光內應——\n'
+     + '能登畠山,三管領家之一,絕於此城。\n\n'
+     + '謙信於城樓賦詩:「霜は軍營に滿ちて秋氣清し」。\n(能登入長尾)');
+ }},
+ {y:1580, s:1, id:'ishiyama', fn:()=>{
+   const B = S.lords.honganji;
+   if(!B || B.alive === false || B.submitted) return;
+   const O = S.lords.oda;
+   if(!O || O.alive === false) return;
+   B.submitted = false; B.alive = false; B.slainBy = 'oda';
+   if(!S.castles) S.castles = {};
+   castlesOf('honganji').forEach(id => { S.castles[id] = 'oda'; });
+   S.rivals.filter(f => f.alive && f.lord === 'honganji').forEach(f => { f.lord = null; });
+   O.demesne += 300;
+   hMod('【史】石山合戰終結(1580)','十年。天下最堅的城,不是石垣砌的,是門徒砌的。\n\n'
+     + '天正八年,本願寺顯如奉正親町天皇之敕開城,退往紀伊鷺森。\n'
+     + '退出時大坂本願寺起火,三日不絕。\n\n'
+     + '「進者往生極樂,退者無間地獄」——那面旗,終於收了。\n(石山入織田;加賀一揆亦平)');
+ }},
  {y:1548, s:2, id:'azukizaka', fn:()=>{
    hMod('【史】小豆坂の戰(1548)','今川與織田為爭三河,於小豆坂再度激突!\n太原雪齋率今川勢大破織田信秀——三河,日益籠罩在駿府的陰影下。');
    if(S.allegiance==='imagawa') startCampaign('imagawa','oda','小豆坂の戰',true);
@@ -8913,7 +9008,7 @@ const HISTORY = [
  {y:1567, s:2, id:'saito_fall', fn:()=>{
    if(S.lords.saito && S.lords.saito.alive !== false){
      const rest = S.lords.saito.demesne;
-     S.lords.saito.alive = false;
+     S.lords.saito.alive = false; S.lords.saito.slainBy = 'oda';
      S.lords.oda.demesne += ri(rest * 0.55);
      S.castles.inabayama = 'oda';
      hMod('【史】稻葉山城落城(1567)','織田信長攻克稻葉山,改其名曰「岐阜」——取周文王鳳鳴岐山之意。'+String.fromCharCode(10)+'齋藤家滅亡。美濃之才俊將各奔前程……而「天下布武」的朱印,自此蓋響東海道。');
@@ -9025,16 +9120,30 @@ const HISTORY = [
    }
  }},
  {y:1565, s:1, id:'eiroku_hen', fn:()=>{
-   hMod('【史】永祿の變(1565)','五月,三好・松永之黨突入二條御所——征夷大將軍足利義輝,拔鹿島之太刀力戰而歿!\n\n「劍豪將軍」橫死,幕府權威掃地,天下為之震動。京都的聲音,從此越來越遠……');
+   const A = S.lords.ashikaga, M = S.lords.miyoshi;
+   if(A && A.alive !== false && !A.submitted) A.demesne = ri(A.demesne * 0.35);
+   if(M && M.alive !== false) M.demesne += 300;
+   hMod('【史】永祿の變(1565)','五月,三好・松永之黨突入二條御所——征夷大將軍足利義輝,拔鹿島之太刀力戰而歿!\n\n「劍豪將軍」橫死,幕府權威掃地,天下為之震動。京都的聲音,從此越來越遠……\n\n(將軍家直轄大損;三好之勢一時無兩)');
    S.flags.bakufuWeak = true;
  }},
  {y:1568, s:2, id:'joraku', fn:()=>{
-   hMod('【史】信長上洛(1568)','織田信長奉足利義昭為將軍,大軍上洛!\n六角觀音寺城一戰而下,三好之黨望風而遁——\n自此「天下布武」之印,蓋在了京都的公文上。\n\n(織田家名分大漲——奉將軍之名,征討四方皆出有名)');
+   const fellR = histFall('rokkaku', 'oda');                 // 觀音寺城一戰而下
+   const M2 = S.lords.miyoshi;
+   if(M2 && M2.alive !== false && !M2.submitted) M2.demesne = ri(M2.demesne * 0.5);
+   const A2 = S.lords.ashikaga;
+   if(A2 && A2.alive !== false && !A2.submitted) A2.demesne += 200;   // 義昭為將軍,然其實傀儡
    if(S.lords.oda && S.lords.oda.alive !== false) S.lords.oda.demesne += 400;
+   hMod('【史】信長上洛(1568)','織田信長奉足利義昭為將軍,大軍上洛!\n'
+     + (fellR ? '六角觀音寺城一戰而下,承久以來的近江守護就此斷絕——\n' : '近江諸家望風而靡——\n')
+     + '三好之黨退往阿波,畿內易主。\n自此「天下布武」之印,蓋在了京都的公文上。\n\n'
+     + '(織田名分大漲;將軍家復立而為傀儡,三好折半)');
    S.flags.jorakuOda = true;
  }},
  {y:1573, s:2, id:'bakufu_fall', fn:()=>{
-   hMod('【史】室町幕府滅亡(1573)','將軍足利義昭舉兵反信長,兵敗被逐出京都——\n二百三十餘年的室町幕府,就此名實俱亡。\n\n自此天下名分不再出自幕府:名門的光環漸褪,實力便是新的名分。\n(名門家格半衰;官位奏請費 +50%)');
+   const fellA = histFall('ashikaga', 'oda');
+   hMod('【史】室町幕府滅亡(1573)','將軍足利義昭舉兵反信長,兵敗被逐出京都——\n'
+     + (fellA ? '二百三十餘年的室町幕府,就此名實俱亡。\n' : '幕府的旗幟,已不在京都飄揚。\n')
+     + '\n自此天下名分不再出自幕府:名門的光環漸褪,實力便是新的名分。\n(名門家格半衰;官位奏請費 +50%)');
    S.flags.bakufuFall = true;
  }},
  {y:1586, s:3, id:'tensho_jishin', fn:()=>{
@@ -9051,7 +9160,7 @@ const HISTORY = [
  }},
  {y:1568, s:3, id:'imagawa_fall', fn:()=>{
    if(S.lords.imagawa.alive !== false){
-     S.lords.imagawa.alive = false;
+     S.lords.imagawa.alive = false; S.lords.imagawa.slainBy = 'tokugawa';
      if(S.lords.takeda && S.lords.takeda.alive !== false) S.lords.takeda.demesne += 700;   // 南下併駿河
      if(S.lords.tokugawa) S.lords.tokugawa.demesne += 800;
      S.lords.oda.demesne += 800;
@@ -9093,11 +9202,11 @@ const HISTORY = [
  }},
  {y:1582, s:1, id:'honnoji', fn:()=>{
    if(S.lords.takeda && S.lords.takeda.alive !== false){
-     S.lords.takeda.alive = false;
+     S.lords.takeda.alive = false; S.lords.takeda.slainBy = 'oda';
      S.rivals.filter(f=>f.alive && f.lord==='takeda').forEach(f=>{ f.lord = null; });
    }
    const odaD = S.lords.oda.demesne;
-   S.lords.oda.alive = false;
+   S.lords.oda.alive = false; S.lords.oda.slainBy = 'toyotomi';   // 本能寺:其業為羽柴所承
    S.lords.toyotomi = {demesne: ri(odaD*0.9)+600, favor: S.allegiance==='oda' ? Math.max(0, S.lords.oda.favor-5) : 0, alive:true,
      submitted: !!(S.lords.oda.submitted || (S.flags && S.flags.unified))};   // 繼承織田的臣屬關係;天下已定者不再興波
    LORD_META.toyotomi.name = '羽柴';
@@ -9121,6 +9230,8 @@ const HISTORY = [
  {y:1590, s:2, id:'odawara', fn:()=>{
    LORD_META.toyotomi.name = '豐臣';
    S.lords.toyotomi.demesne += 1000;
+   histFall('hojo', 'toyotomi');            // 百年關東,一夏而盡
+   histFall('uesugi', 'hojo');              // 若管領一系尚存,此時亦無所依
    hMod('【史】小田原征伐・天下統一(1590)','豐臣秀吉二十萬大軍圍小田原,北條氏百年關東霸業灰飛煙滅。\n奧州伊達俯首——戰國亂世,至此統一。\n\n秀吉一聲令下:德川家康移封關東二百五十萬石。');
    if(S.allegiance==='tokugawa'){
      queueModal({title:'移封關東——天下級的抉擇',
@@ -9298,7 +9409,7 @@ const HISTORY_IF = [
    }
  }},
  {y:1568, s:2, id:'if_owari', fn:()=>{
-   S.lords.oda.alive = false;
+   S.lords.oda.alive = false; S.lords.oda.slainBy = 'imagawa';   // if線:尾張為今川所併
    S.rivals.filter(f=>f.alive && f.lord==='oda').forEach(f=>{ f.lord = Math.random()<0.6 ? 'imagawa' : null; });
    S.lords.imagawa.demesne += 800;
    if(S.lords.takeda && S.lords.takeda.alive !== false) S.lords.takeda.demesne += 700;
@@ -12492,8 +12603,10 @@ const PROV_WEST = {
   echizen:'asakura', kaga:'honganji', noto:'hatakeyama', etchu:'none', hida:'none',
   wakasa:'none', tango:'none', tanba:'none', harima:'none',
   omi:'rokkaku', yamashiro:'ashikaga', settsu:'miyoshi', kawachi:'none', izumi:'none',
-  yamato:'none', iga:'none', ise:'kitabatake', shima:'none', kii:'none',
-  // 關東:天文十四年,北條方張而兩上杉未潰;武藏正是三家角力之地
+  yamato:'none', iga:'none', ise:'kitabatake', shima:'none', kii:'none'
+};
+// 關東:天文十四年,北條方張而兩上杉未潰;武藏正是三家角力之地
+const PROV_EAST = {
   izu:'hojo', sagami:'hojo', musashi:'none', kozuke:'uesugi',
   shimotsuke:'none', hitachi:'satake', shimousa:'none', kazusa:'none',
   awa:'satomi', echigo:'nagao'
@@ -12530,7 +12643,7 @@ function provOwners(){
     mino: done('if_kyoto') ? 'imagawa' : 'saito',
     owari: done('if_owari') ? 'imagawa' : 'oda',
     mikawa:'imagawa', totomi:'imagawa', suruga:'imagawa', kai:'takeda', shinano:'none',
-    ...PROV_WEST};
+    ...PROV_WEST, ...PROV_EAST};
   const oda = done('honnoji') ? 'toyotomi' : 'oda';
   return {
     mino:   done('saito_fall') ? oda : 'saito',
@@ -12540,7 +12653,27 @@ function provOwners(){
     suruga: done('honnoji') ? 'tokugawa' : done('imagawa_fall') ? 'takeda' : 'imagawa',
     kai:    done('honnoji') ? 'tokugawa' : 'takeda',
     shinano: done('kawanaka_end') ? 'takeda' : 'none',
-    ...PROV_WEST};
+    ...westOwners(done, oda), ...eastOwners(done)};
+}
+// 西國諸國的歸屬:天文十四年之舊觀,經上洛・一乘谷・石山諸役而易主
+function westOwners(done, oda){
+  const W = Object.assign({}, PROV_WEST);
+  if(done('joraku')){ W.omi = oda; }                          // 觀音寺城一戰而下,六角亡
+  if(done('ichijodani')){ W.echizen = oda; W.omi = oda; }     // 一乘谷・小谷俱燼
+  if(done('ishiyama')){ W.settsu = oda; W.kaga = oda; }       // 石山開城,加賀の一揆亦平
+  if(done('mise')){ W.ise = oda; }                            // 三瀬の變
+  if(done('nanao_fall')){ W.noto = 'nagao'; }                 // 七尾城落於謙信
+  if(done('bakufu_fall')){ W.yamashiro = oda; }               // 幕府既亡,京畿歸於實力
+  return W;
+}
+// 關東諸國:河越夜戰・平井落城・小田原征伐
+function eastOwners(done){
+  const E = Object.assign({}, PROV_EAST);
+  if(done('kawagoe')){ E.musashi = 'hojo'; }
+  if(done('hirai_fall')){ E.kozuke = 'hojo'; }
+  if(done('odawara')){ E.izu = 'tokugawa'; E.sagami = 'tokugawa';
+                       E.musashi = 'tokugawa'; E.kozuke = 'tokugawa'; }
+  return E;
 }
 // 加權 Voronoi:每格歸於「√石高 ÷ (距離+45)」最大者——石高越大,influence 所及越廣。
 // 繪法:先算勝者網格 → 縮圖平滑放大(淡彩暈染) → 再描墨線界線(眾細、陣營粗)。
@@ -12568,12 +12701,24 @@ function provStatus(){
     legacy.shinano = done('kawanaka_end') ? '武田家' : '諸豪族';
   }
   Object.assign(legacy, PROV_WEST_TXT);
+  // 天文十四年的舊題名(「六角・淺井」「兩上杉・北條」)一旦易主就不再作數,
+  // 否則近江都歸了豐臣,圖上還寫著六角。
+  const ORIG = Object.assign({}, PROV_WEST, PROV_EAST);
   const out = {};
   for(const pk in base){
     let k = base[pk], txt = legacy[pk] || '', subm = false;
+    if(ORIG[pk] !== undefined && base[pk] !== ORIG[pk])
+      txt = LORD_META[base[pk]] ? LORD_META[base[pk]].name + '家' : '';
     if(k !== 'none'){                        // 齋藤自 v23 起亦為真大名,同受存亡與臣服疊加
       const L = S.lords ? S.lords[k] : null;
-      if(L && L.alive === false){ k = 'player'; txt = famN; }          // 為你所滅——其地入你之手
+      if(L && L.alive === false){
+        // 此處原本寫死「大名一死,其地必歸玩家」——在只有五家大名、且個個由劇本
+        // 指定繼承者的年代還看不出問題;西國與關東的諸家一旦亡於他人之手,
+        // 整個近江越前就會憑空變成你的。改為記其「亡於誰手」。
+        const by = L.slainBy || 'player';
+        if(by === 'player'){ k = 'player'; txt = famN; }
+        else { k = by; txt = (LORD_META[by] ? LORD_META[by].name : '') + '家'; }
+      }
       else if(L && L.submitted){ subm = true; txt = (LORD_META[k] ? LORD_META[k].name : '') + '家(臣服)'; }
     }
     const col = k==='none' ? '#878881'                      // 舊配色的殘渣:此處曾寫死齋藤的舊綠
