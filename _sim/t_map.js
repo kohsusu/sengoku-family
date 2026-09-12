@@ -440,6 +440,58 @@ ok('史實之滅亦不奪你已得之地',
    ev(`provStatus().owari.owner === 'player' || provStatus().owari.owner === 'oda'`),
    '尾張 ' + ev(`provStatus().owari.owner`));
 
+// ── 25. 甲包:兵鋒所及隨國力而長 ──
+g.startGame(g.newState('及試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden');`);
+ok('開局的兵鋒與舊制相同(150 里)——擴張機制放寬,不動開局',
+   ev('myReach()') === 150 && ev('myNeighbors().length') >= 5 && ev('myNeighbors().length') <= 9,
+   `${ev('myReach()')} 里・鄰家 ${ev('myNeighbors().length')} 家`);
+const reachSteps = [];
+for(const [k, kani, dm] of [[500,0,false],[5000,1,false],[20000,2,true],[50000,2,true]]){
+  ev(`S.kokudaka=${k}; S.kani=${kani}; S.isDaimyo=${dm};`);
+  reachSteps.push(ev('myReach()'));
+}
+ok('兵鋒隨石高・官位・大名之位遞增', reachSteps.every((v,i)=> i===0 || v > reachSteps[i-1]),
+   reachSteps.join(' → ') + ' 里');
+// 本據之力 510 里,京都 514 里——差那四里,正好要靠從屬假道;這是設計,不是巧合
+ok('五萬石大名的本據兵鋒近於京都(三河→二條御所 514 里)', reachSteps[3] >= 480,
+   reachSteps[3] + ' 里,尚差 ' + (514 - reachSteps[3]) + ' 里,須假道從屬');
+ok('從屬假道之力弱於本據', ev('vassalReach()') < ev('myReach()') && ev('vassalReach()') > 150,
+   `本據 ${ev('myReach()')} / 假道 ${ev('vassalReach()')}`);
+ev(`S.kokudaka=500; S.kani=0; S.isDaimyo=false;`);
+ok('眾與眾之間仍是定數 150(AI 小豪族不隨玩家而長)',
+   ev('NEIGHBOR_R') === 150
+   && ev(`(()=>{ const a=S.rivals.find(f=>f.id==='mizuno');
+        return neighborsOf(a).every(x=>rdist(a,x) <= 150) || neighborsOf(a).length <= 2; })()`), '');
+
+// ── 26. 音信入預設任務 ──
+g.startGame(g.newState('默試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ok('開局即有一人在跑音信', ev(`S.retainers.some(r=>r.task === 'onshin')`),
+   ev(`S.retainers.map(r=>TASKS[r.task]?TASKS[r.task].name:r.task).join(' / ')`));
+// 家老(智 88)才是全家最高,而你不會派首席重臣去跑腿;派的是智謀次高的徒士頭
+ok('跑音信的是智謀數一數二者',
+   ev(`(()=>{ const o=S.retainers.find(r=>r.task==='onshin'); if(!o) return false;
+        const rank=S.retainers.slice(1).map(r=>r.chi).sort((a,b)=>b-a);
+        return o.chi >= rank[1]; })()`),
+   ev(`(()=>{ const o=S.retainers.find(r=>r.task==='onshin');
+        return o ? o.name+' 智謀 '+o.chi+'(全家 '+S.retainers.slice(1).map(r=>r.chi).sort((a,b)=>b-a).join('/')+')' : ''; })()`));
+
+// ── 27. 遣間者探遠國 ──
+g.startGame(g.newState('諜試', 0, 'kokujin', 'gozoku', 'mikawa'));
+ev(`modalQueue.length=0; $('modalBack').classList.add('hidden'); S.money=500;`);
+const seeNear = ev(`S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*1.6).length`);
+ev(`S.farIntelY = S.year;`);
+const seeFar = ev(`S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*2.8).length`);
+ok('遣間者使耳目及於更遠', seeFar > seeNear, `${seeNear} → ${seeFar} 家`);
+ok('間者之效只及一年', ev(`(()=>{ S.year += 1; return S.farIntelY !== S.year; })()`), '');
+ev(`S.year -= 1; S.farIntelY = 0; S.money = 10;`);
+ok('錢不足則遣不出間者', ev('S.money') < ev('FAR_INTEL_COST'), `${ev('S.money')} < ${ev('FAR_INTEL_COST')} 貫`);
+// 大成之後,間者可盡窺天下
+ev(`S.kokudaka=20000; S.kani=2; S.isDaimyo=true; S.farIntelY = S.year;`);
+ok('大名遣間者可盡窺天下諸眾',
+   ev(`S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*2.8).length`) >= ev('S.rivals.filter(f=>f.alive).length') * 0.9,
+   ev(`S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*2.8).length`) + ' / ' + ev('S.rivals.filter(f=>f.alive).length') + ' 家');
+
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
 console.log(n?'✗ 有未過':'全部通過');

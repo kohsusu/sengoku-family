@@ -80,6 +80,12 @@
   #topbar .warn{color:#ff9b8a;font-weight:bold}
   main{display:flex;flex-wrap:wrap;gap:12px;padding:12px;align-items:flex-start}
   #mapWrap{flex:1 1 560px;min-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
+  #rivalBox .cardTitle button, #lordBox .cardTitle button{
+    float:right;font:600 11px/1 "Noto Serif TC","PMingLiU",serif;color:#4a3c26;
+    background:rgba(238,228,203,.9);border:1px solid rgba(122,111,84,.7);
+    border-radius:4px;padding:5px 9px;cursor:pointer;letter-spacing:.04em}
+  #rivalBox .cardTitle button:hover{background:#f3ead0}
+  #rivalBox .farOn{float:right;font-size:11px;color:var(--accent2);font-weight:600}
   #mapStage{position:relative}
   #map{width:100%;height:auto;display:block;border-radius:6px;
     cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -593,7 +599,7 @@
 
 <script>
 'use strict';
-const BUILD = 'h1a';
+const BUILD = 'rc1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -803,7 +809,7 @@ function newState(famName, kamon, clan, mode, region, scen){
       {name:famName+'彌一郎', role:'當主', kind:'一門', age:28, bu:62, nai:66, chi:58, task:'tonden', merit:0, salary:0,  loyalty:100, rank:0, stamina:100},
       {name:'石川清兵衛',     role:'家老', kind:'譜代', age:45, bu:64, nai:88, chi:88, task:'farm',   merit:0, salary:34, loyalty:75,  rank:3, stamina:100},
       {name:'鳥居半四郎',     role:'侍大將', kind:'譜代', age:33, bu:88, nai:62, chi:75, task:'drill', merit:0, salary:26, loyalty:72,  rank:2, stamina:100},
-      {name:'服部小平太',     role:'徒士頭', kind:'譜代', age:24, bu:64, nai:66, chi:80, task:'trade', merit:0, salary:18, loyalty:70,  rank:1, stamina:100}
+      {name:'服部小平太',     role:'徒士頭', kind:'譜代', age:24, bu:64, nai:66, chi:80, task:'onshin', merit:0, salary:18, loyalty:70,  rank:1, stamina:100}
     ]
   };
   applyClan(st);
@@ -2992,7 +2998,7 @@ function simRivalPredation(lines){
 function simRivalOffers(){
   if(!S.rivals || S.gameOver) return;
   // ── 雪中送炭:欠你大人情的眾,見你斷糧會送米上門(人情兩訖) ──
-  const savior = S.rivals.find(f=>f.alive && (f.on||0) >= 35 && pdist(f) <= NEIGHBOR_R);
+  const savior = S.rivals.find(f=>f.alive && (f.on||0) >= 35 && pdist(f) <= myReach());
   if(savior && (S.rice < S.kokudaka*0.35 || S.recentLoss > 0) && Math.random() < 0.6){
     const amt = ri(120 + savior.koku*0.06);
     queueModal({title:`${fname(savior)}——雪中送炭`,
@@ -3011,7 +3017,7 @@ function simRivalOffers(){
   }
   // ── 凶作買米:歉收之年,缺糧的眾高價求購(賣了記恩) ──
   if(S.weather && S.weather.f < 0.88 && S.rice >= 250 && Math.random() < 0.35){
-    const buyers = S.rivals.filter(f=>f.alive && f.lord !== 'player' && (f.money||0) >= 60 && pdist(f) <= NEIGHBOR_R);
+    const buyers = S.rivals.filter(f=>f.alive && f.lord !== 'player' && (f.money||0) >= 60 && pdist(f) <= myReach());
     if(buyers.length){
       const bh = buyers.filter(x=>fDev(x,'honai'));   // 保內商人網:消息靈通,求糴常著先鞭
       const b = (bh.length && Math.random() < 0.6) ? pick1(bh) : pick1(buyers);
@@ -3037,7 +3043,7 @@ function simRivalOffers(){
   }
   // ── 共同討伐:有宿怨的眾來邀合兵,戰利品分成 ──
   if(Math.random() < 0.16 && S.soldiers >= 30){
-    const props = S.rivals.filter(f=>f.alive && f.lord !== 'player' && f.rel >= 0 && pdist(f) <= NEIGHBOR_R
+    const props = S.rivals.filter(f=>f.alive && f.lord !== 'player' && f.rel >= 0 && pdist(f) <= myReach()
       && Object.keys(f.grudge||{}).some(id => id !== 'player' && (f.grudge[id]||0) >= 25
            && S.rivals.some(t=>t.id===id && t.alive && t.lord !== 'player')));
     if(props.length){
@@ -3333,7 +3339,7 @@ function simLordKiritori(lines){
   S.lordPrey = {lord:key, id:f.id};
   S.lords[key].kiriCd = 2 + ri(Math.random()*2);
   lines.push(`📯【風聞】${LORD_META[key].name}家評定已決:「${fname(f)}(${f.seat})不奉誰家旗號,來春切り取り!」`+
-    (pdist(f) <= NEIGHBOR_R ? `——兵鋒就在鄰境,${S.famName}家若有意,當趕在大軍之前。` : ''));
+    (pdist(f) <= myReach() ? `——兵鋒就在鄰境,${S.famName}家若有意,當趕在大軍之前。` : ''));
 }
 // 境目相論:相鄰而均勢的大名因寸土爆發局地戰(不佔 warPair——腳本大戰照舊,此為其外的私鬥)
 function simLordFeuds(lines){
@@ -3555,7 +3561,23 @@ function warAftermath(winKey, loseKey){ // 合戰後:直轄領易手、從屬眾
 }
 // ══════════ 地緣:兵馬所及,不過鄰境 ══════════
 // 弓箭到不了的地方,刀兵也到不了。爭奪只發生在接壤之家之間。
-const NEIGHBOR_R = 150;              // 鄰境半徑(全九家距離 21~273,中位 149)
+// 鄰境半徑。眾與眾之間仍是這個定數(小豪族的腳程就是這麼遠),
+// 但**玩家的兵鋒所及會隨國力與名分而長**——
+// 原本它也是常數:在 900×560 的舊圖上看不出問題,世界擴到 2080px 之後,
+// 五百石之家與五萬石之主的兵鋒一樣遠,擴張機制遂卡死(實測中位從屬眾 0 家、
+// 中位最遠觸及 179px)。這與先前修過的 CUT=0.02 是同一類錯:
+// 為小世界訂的常數,在大世界裡失效。
+const FAR_INTEL_COST = 60;           // 遣間者探遠國:一年之效
+const NEIGHBOR_R = 150;              // 眾與眾之間(全九家距離 21~273,中位 149)
+function myReach(){                  // 自家本據的兵鋒所及
+  if(typeof S === 'undefined' || !S) return NEIGHBOR_R;
+  return ri(NEIGHBOR_R
+    + Math.min(240, Math.sqrt(Math.max(0, (S.kokudaka || 0) - 500)) * 1.1)   // 地廣則糧道遠
+    + (S.kani || 0) * 25                                                      // 官位者,號令及於名分所至
+    + (S.isDaimyo ? 70 : 0));                                                 // 一國之主,自不同於一鄉之豪
+}
+// 從屬之境亦可假道,然遠不及本據之力
+const vassalReach = () => ri(NEIGHBOR_R + (myReach() - NEIGHBOR_R) * 0.45);
 // 起始區域:各國國人眾的立足點(開局選擇)
 const REGIONS = {
   mikawa: {name:'三河', px:290, py:380, tag:'兩強夾縫・古戰場', desc:'今川與織田的角力場。鄰家眾多、事件最密——本作的原點。'},
@@ -3587,7 +3609,7 @@ const isNeighbor = (a, b) => neighborsOf(a).includes(b);
 // 玩家的鄰境
 function myNeighbors(){
   const live = S.rivals.filter(x=>x.alive);
-  const near = live.filter(x=>pdist(x) <= NEIGHBOR_R);
+  const near = live.filter(x=>pdist(x) <= myReach());
   if(near.length) return near;
   return live.sort((a,b)=>pdist(a)-pdist(b)).slice(0, 2);
 }
@@ -3595,11 +3617,11 @@ const isMyNeighbor = f => myNeighbors().includes(f);
 // 兵鋒所及:自家鄰境,或任一從屬眾的鄰境——從屬之地即我地,兵馬糧道假道而行
 function inStrikeRange(f){
   if(isMyNeighbor(f)) return true;
-  return myVassals().some(v => v !== f && v.alive && rdist(v, f) <= NEIGHBOR_R);
+  return myVassals().some(v => v !== f && v.alive && rdist(v, f) <= vassalReach());
 }
 // 取道之家(顯示用):經哪家從屬之境可及此家
 function strikeVia(f){
-  return myVassals().filter(v => v !== f && v.alive && rdist(v, f) <= NEIGHBOR_R).map(v => fname(v));
+  return myVassals().filter(v => v !== f && v.alive && rdist(v, f) <= vassalReach()).map(v => fname(v));
 }
 // 姻親與盟友的與力:血緣與盟約在刀兵臨頭時才見真章(距離越近出兵越多)
 // 領地台帳:併吞誰的地,重心就往那邊移(否則打下東三河,紅圈仍釘在岡崎)
@@ -3612,12 +3634,14 @@ function claimSeat(f, share){
 const lordMarr = key => !!(S.lordMarr && S.lordMarr[key]);
 function allyAid(){
   return S.rivals.filter(f=>f.alive && (f.marr || f.pact) && f.lord !== 'player')
-    .reduce((a,f)=> a + ri(rSol(f) * (pdist(f) <= NEIGHBOR_R ? 0.30 : 0.12)), 0);
+    .reduce((a,f)=> a + ri(rSol(f) * (pdist(f) <= myReach() ? 0.30 : 0.12)), 0);
 }
 // 距離的說法(給 UI 用)
 function distLabel(f){
   const d = pdist(f);
-  return d <= 60 ? '接壤(唇齒相依)' : d <= NEIGHBOR_R ? '鄰境' : d <= 210 ? '隔一國之遙' : '道路不通,兵馬難及';
+  const R = myReach();
+  return d <= R*0.4 ? '接壤(唇齒相依)' : d <= R ? '鄰境'
+       : d <= R*1.4 ? '隔一國之遙' : '道路不通,兵馬難及';
 }
 const score = f => f.koku + f.prestige*8;                 // 家格
 const playerScore = () => S.kokudaka + S.prestige*8;
@@ -9891,7 +9915,7 @@ function resolveTasks(){
         if(S.money < cost){ log(`${r.name}:囊中無物,音信之禮辦不起來。`,'bad'); break; }
         // 結好之效以智謀為主(辭令與分寸)、內政為輔(禮數與帳目)
         const pow = (r.chi * 0.55 + r.nai * 0.25) * eff;
-        const near = S.rivals.filter(f=> f.alive && f.lord !== 'player' && pdist(f) <= NEIGHBOR_R * 1.25);
+        const near = S.rivals.filter(f=> f.alive && f.lord !== 'player' && pdist(f) <= myReach() * 1.25);
         const reach = aiLords().filter(k => S.lords[k].alive !== false && !S.lords[k].submitted
                                          && lordDist(k) <= 420);
         if(!near.length && !reach.length){
@@ -11416,6 +11440,8 @@ const INTRO_TIPS = [
  ['gonaisho', /御內書/,        '御內書:京都幕府的文書。獻金買名望,或請幕府調停大名之戰。'],
  ['gungi',    /國戰軍議/,      '軍議:選大將、手動調四兵種數量(可少帶省糧),戰力數字即時可見——兵種與大將專精相合,戰力方能盡出。'],
  ['gunhyo',   /軍評定——/,      '軍評定:軍師三案各有勝算與損兵,數字是軍師「所見」——智略愈高愈準,庸才會看走眼。選案後可再調兵。'],
+ ['farintel', /遣間者探遠國/, '遣間者:番付平時只列耳目所及之家,而耳目隨國力而長。花錢遣間者,一年之內聽得到更遠——遠國的興亡與你未必無關,但你得先聽得見。'],
+ ['onshin',   /音信/,          '音信:遣使饋贈於鄰境諸家(依智謀)。關係是勧誘的門檻——實測中,擋住擴張的從來不是實力(家格夠的局佔十成),而是關係(夠的只有五成)。要納鄰家為從屬,先讓他們認得你。'],
  ['keiko',    /家業修練/,      '家業修練:治水・商政・武藝三道共用同一批修練點,總上限 30 點——不可能三道皆精。點由家臣行「精進」而來(全速),「練兵」與「經商」各積半數。等級本身不再白給加成,效果全在你選的技能上。'],
  ['gechi',    /下知/,          '下知:從屬眾各有評定方針——順其志者欣然用命,逆其志者陽奉陰違。威令每季有限(官位・家老・取次奉行可增),恩賞(加增)則不費威令。'],
  ['ozake',    /重臣坐大/,      '坐大之臣:當年大名如何猜忌你,今日你便要如何待人。加增養其心、削封挫其勢、取質束其身、坐視養其虎——四者皆有代價。'],
@@ -11734,7 +11760,7 @@ function render(){
   }
   $('slotTag').textContent = `存檔欄:第${['一','二','三','四'][curSlot-1]}欄(手動存檔${S && S._dirty ? '・有未保存進度●' : ''})`;
   if($('mapCap')){
-    const live = S.rivals ? S.rivals.filter(f=>f.alive && pdist(f) <= 240) : [];
+    const live = S.rivals ? S.rivals.filter(f=>f.alive && pdist(f) <= myReach()*1.6) : [];
     const top = live.length ? live.reduce((a,b)=>a.koku>=b.koku?a:b) : null;
     renderMapLegend();
     $('mapCap').textContent = `東海道略圖 — 全圖依居城位置與石高劃分於諸大名與眾。`+
@@ -11896,7 +11922,7 @@ function jitaiExec(i){
   }else{
     // 轉仕:高功者六成、常人二成五——投入鄰家眾麾下,並記下這筆怨
     const p2 = highMerit ? 0.6 : 0.25;
-    const cands = S.rivals.filter(f=>f.alive && f.lord !== 'player' && pdist(f) <= NEIGHBOR_R && (f.men||[]).length < manCap(f));
+    const cands = S.rivals.filter(f=>f.alive && f.lord !== 'player' && pdist(f) <= myReach() && (f.men||[]).length < manCap(f));
     if(cands.length && Math.random() < p2){
       const f = pick1(cands);
       const m = {name:r.name, age:r.age, bu:r.bu, nai:r.nai, chi:r.chi};
@@ -11965,6 +11991,16 @@ function renderLords(){
          `<span class="${L.favor<0?'loyLow':''}">好感 ${L.favor}${S.allegiance===key?'・<b>臣從中</b>':''}</span></div>`;
   }
   $('lordBox').innerHTML = h;
+  {
+    const b = $('btnFarIntel');
+    if(b) b.onclick = ()=>{
+      if(S.farIntelY === S.year) return;
+      if(S.money < FAR_INTEL_COST){ log('錢不夠打發間者的盤纏。','bad'); return; }
+      S.money -= FAR_INTEL_COST; S.farIntelY = S.year;
+      log(`🕶 遣間者往遠國——商旅、山伏、巡禮之徒,耳目所及自此及於 ${ri(myReach()*2.8)} 里(本年之內)。`,'good');
+      save(); render();
+    };
+  }
   document.querySelectorAll('.rivalRow[data-lord]').forEach(el=>{
     el.onclick = () => openLord(el.dataset.lord);
   });
@@ -12107,9 +12143,12 @@ function renderIntelSum(){
 }
 function renderRivals(){
   if(!S.rivals){ $('rivalBox').innerHTML = ''; return; }
-  // 近國番付:只列兵馬或使者可及者(≤240),遠國之家仍在地圖與世上活動
-  // 自家從屬不論遠近必列——遠國之臣照樣納貢,豈可無從管束
-  const entries = S.rivals.filter(f=>f.alive && (pdist(f) <= 240 || f.lord === 'player')).map(f=>({f, sc:score(f)}));
+  // 近國番付:只列兵馬或使者可及者,遠國之家仍在地圖與世上活動。
+  // 視野隨兵鋒而放寬(原為定數 240,與 NEIGHBOR_R 同一個毛病)。
+  // 自家從屬不論遠近必列——遠國之臣照樣納貢,豈可無從管束。
+  // 兵鋒所及 ×1.6 是自然聽得到的範圍;遣了間者,一年之內聽得到更遠
+  const SEE = myReach() * (S.farIntelY === S.year ? 2.8 : 1.6);
+  const entries = S.rivals.filter(f=>f.alive && (pdist(f) <= SEE || f.lord === 'player')).map(f=>({f, sc:score(f)}));
   entries.push({player:true, sc:playerScore()});
   entries.sort((a,b)=>b.sc-a.sc);
   const mine = myVassals();
@@ -12122,8 +12161,14 @@ function renderRivals(){
       `<b class="loyLow">🕸 包圍網結成</b> <span class="dim">${S.coalition.mem.map(id=>{const f=S.rivals.find(x=>x.id===id); return f?fname(f):'';}).filter(Boolean).join('・')} 共謀制我</span></div>`
     : (S.aggression||0) >= 35
       ? `<div class="famRow dim">⚠ 侵略之名(${S.aggression})——諸家側目,過猶不及則招包圍網</div>` : '')
-    + `<div class="cardTitle">${(REGIONS[S.region]||REGIONS.mikawa).name}近國番付 <span class="dim" style="font-weight:normal;font-size:12px">(家格=石高+威望×8`+
-    (mine.length ? `・自家國力 ${playerPower()}、從屬 ${mine.length} 家` : '') + `)</span></div>`;
+    + `<div class="cardTitle">${(REGIONS[S.region]||REGIONS.mikawa).name}近國番付 `+
+      `<span class="dim" style="font-weight:normal;font-size:12px">(家格=石高+威望×8`+
+      (mine.length ? `・自家國力 ${playerPower()}、從屬 ${mine.length} 家` : '')+
+      `・耳目所及 ${ri(SEE)} 里)</span>`+
+      (S.farIntelY === S.year
+        ? `<span class="farOn">🕶 間者在外——遠國之事亦有所聞(本年)</span>`
+        : `<button id="btnFarIntel" type="button" title="遣間者往遠國,一年之內番付列及更遠之家">🕶 遣間者探遠國(${FAR_INTEL_COST} 貫)</button>`)
+      + `</div>`;
   // 大名昇格進度
   if(!S.isDaimyo && S.lords && (mine.length || S.kokudaka >= 1200)){
     const req = daimyoReq();
@@ -12196,7 +12241,7 @@ ${Object.keys(f.dev).map(k=>`　${FDEV_META[k].name}${f.dev[k]>1?'×'+f.dev[k]:'
 
 ⚠ 非我鄰境——中間隔著他家領地,兵馬不通,無從用兵。`+
       `
-　欲取其地,須先取道 ${myNeighbors().filter(x=>rdist(x,f)<=NEIGHBOR_R).map(x=>fname(x)).join('、')||'沿途諸家'}(納為從屬亦可假道)。`+
+　欲取其地,須先取道 ${myNeighbors().filter(x=>rdist(x,f)<=vassalReach()).map(x=>fname(x)).join('、')||'沿途諸家'}(納為從屬亦可假道)。`+
       `
 　(贈禮、取引、縁談、勧誘等文事不受此限)`);
   const choices = [];
