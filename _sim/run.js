@@ -341,6 +341,7 @@ for(let seed = 0; seed < N; seed++){
       g.endSeason();
       rec.decisions += drain(P, rec);
       if(i % 2 === 0) audit(g.S, rec, g.S.year+'-'+g.S.season);
+      if(!rec.skYr && ev('skCapLeft()') <= 0) rec.skYr = g.S.year;   // 幾年練滿三十點
       { // 觸及範圍:一局裡玩家實際打得到／收得到的家數(擴圖之後最該問的一個數)
         const t = ev(`(()=>{ let n=0, far=0;
           for(const f of S.rivals){ if(!f.alive) continue;
@@ -374,6 +375,7 @@ for(let seed = 0; seed < N; seed++){
   Object.assign(rec, {
     ms: Date.now() - t0,
     year:S.year, over:!!S.gameOver, koku:S.kokudaka, prest:S.prestige, pop:S.pop,
+    sk:ev('skTotalLv()+skPt()'), skCap:ev('skCapLeft()')<=0,
     sol:S.soldiers, rice:Math.round(S.rice), money:Math.round(S.money), minshin:S.minshin,
     retainers:S.retainers.length, active:ev('activeR().length'),
     spare:S.retainers.filter(r=>r.spare).length, gens:(S.lineage||[]).length,

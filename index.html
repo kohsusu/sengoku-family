@@ -602,7 +602,7 @@
 
 <script>
 'use strict';
-const BUILD = 'pr1';
+const BUILD = 'kk2';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -2135,12 +2135,18 @@ const skTotalLv = () => skLv('suiri') + skLv('trade') + skLv('bugei');
 const skPt = () => Math.max(0, (S && S.keikoPt) || 0);                // 未配之點
 const skCapLeft = () => Math.max(0, SK_TOTAL_CAP - skTotalLv() - skPt());
 function skSync(){ if(!S) return; S.suiri = skLv('suiri'); S.tradeLv = skLv('trade'); S.bugei = skLv('bugei'); }
+// 學然後知不足:一點的火候隨已得而漲。
+// 原本固定 100,而一名內政 66 的家臣一季即產 66——整棵樹只要四十五個「家臣・季」,
+// 三名家臣十四季(三年半)便練滿三十點,「三道取捨」在第一個世代就消失了。
+// 改為 100 + 25n 之後,首點依舊一季半可得(系統仍能自己教會玩家),
+// 而末點需十二個家臣・季,全樹約二百一十個——夠一個用心經營的家撐大半局。
+const keikoCost = () => 100 + 25 * (skTotalLv() + skPt());
 // 家業精進:三道共用同一條進度條(精進全速,練兵・經商各半速——其本業另有即時回報)
 function keikoGain(r, amt){
   if(skCapLeft() <= 0) return false;
   S.keiko = (S.keiko || 0) + amt;
-  if(S.keiko < 100) return false;
-  S.keiko -= 100;
+  if(S.keiko < keikoCost()) return false;
+  S.keiko -= keikoCost();
   S.keikoPt = (S.keikoPt || 0) + 1;
   if(r) r.merit = (r.merit||0) + 5;
   log(`📜 ${r ? r.name + ' 精進有成' : '家業精進有成'}——修練點 +1(共 ${skTotalLv() + skPt()}/${SK_TOTAL_CAP});治水・商政・武藝三道之議,可擇新技。`,'good');
@@ -2193,8 +2199,19 @@ function skAlloc(tree, key){
   if(w) w.innerHTML = `<div class="sktotal">家業修練 <b>${skTotalLv()}</b>/${SK_TOTAL_CAP} 點`
       + (skPt() ? `・<b class="skun">尚有 ${skPt()} 點未配</b>` : '')
       + (skCapLeft() ? `——尚可精進 ${skCapLeft()} 點` : '——已臻極致,三道再無所進')
-      + `<br><span class="dim">點由「精進」而來(練兵・經商亦有半數);三道共用此數,內政與武備終須取捨。</span></div>`
+      + keikoBar()
       + skTreeHtml('suiri') + skTreeHtml('trade') + skTreeHtml('bugei');
+}
+// 學然後知不足——所以要讓玩家看見「這一點要多少」,而不是默默變慢
+function keikoBar(){
+  if(skCapLeft() <= 0) return `<br><span class="dim">三道已臻極致,再無所進。</span></div>`;
+  const need = keikoCost(), have = Math.max(0, Math.min(need, ri(S.keiko || 0)));
+  const pct = ri(have / need * 100);
+  return `<div class="keikobar" style="margin-top:6px;height:7px;background:rgba(43,38,32,.14);border-radius:1px">`
+       + `<div style="width:${pct}%;height:100%;background:#8a6a3b"></div></div>`
+       + `<span class="dim">下一點火候 ${have}/${need}`
+       + (skTotalLv() + skPt() ? `(已得 ${skTotalLv() + skPt()} 點,再進者愈難)` : '')
+       + `。點由「精進」而來(練兵・經商亦有半數);三道共用此數,內政與武備終須取捨。</span></div>`;
 }
 function skView(){
   const dup = m => m && m.title && m.title.indexOf('家業修練') >= 0;
@@ -2204,7 +2221,7 @@ function skView(){
     hud:`<div id="skWrap"><div class="sktotal">家業修練 <b>${skTotalLv()}</b>/${SK_TOTAL_CAP} 點`
         + (skPt() ? `・<b class="skun">尚有 ${skPt()} 點未配</b>` : '')
         + (skCapLeft() ? `——尚可精進 ${skCapLeft()} 點` : '——已臻極致,三道再無所進')
-        + `<br><span class="dim">點由「精進」而來(練兵・經商亦有半數);三道共用此數,內政與武備終須取捨。</span></div>`
+        + keikoBar()
         + skTreeHtml('suiri') + skTreeHtml('trade') + skTreeHtml('bugei') + `</div>`,
     body:'', choices:[{label:'領命', fn:()=>{}}] });
   pumpModal();
@@ -10220,6 +10237,10 @@ function resolveTasks(){
       }
       case 'drill': {
         const ut = S.drillType || 'ashigaru', U = UNITS[ut];
+        // 操練了一季就是操練了一季:錢糧不足、丁壯已盡、募無所獲,武藝之理照樣長進。
+        // 原本 keikoGain 寫在那三條退路之後,以致任務說明裡「操練之餘亦積修練點」
+        // 從來沒有兌現過——實測六十局兩百四十季只累出一點,而那一點還是別處來的。
+        keikoGain(r, r.bu * eff * 0.5);   // 半速;「精進」才是正途
         const disc = (ut==='teppo' && S.histDone && S.histDone.includes('nagashino')) ? 0.75 : 1;  // 長篠後鐵砲普及
         const cM = ri(U.money*disc), cR = U.rice;
         if(S.money < cM || S.rice < cR){
@@ -10239,11 +10260,12 @@ function resolveTasks(){
         armySync(); ensureApt(r);
         const aptB = r.apt === ut ? 1.35 : r.apt2 === ut ? 1.15 : r.wapt === ut ? 0.8 : 1;   // 專精者練得快
         const gain = Math.min(ri((4 + r.bu * 0.12) * eff * U.num * aptB * (1 + skR('bugei','choren')*0.12)), cap - S.soldiers);
+        // 兵員已滿也還是操練了一季:原本 keikoGain 寫在這個 break 之後,
+        // 以致「操練之餘亦積修練點」這句說明從來沒有兌現過(六十局兩百四十季只累出一點)。
         if(gain <= 0){ log(`${r.name}:募集未有所獲。`,'bad'); break; }
         S.army[ut] = (S.army[ut]||0) + gain;
         S.soldiers += gain;
         r.merit = (r.merit||0) + 2;
-        keikoGain(r, r.bu * eff * 0.5);   // 操練之餘亦見武藝之理(半速;「精進」才是正途)
         // 操練也是歷練,但遠不及實戰(實戰一場 36~72,平時一季 9)
         addAptExp(r, {ashigaru:0, yumi:0, kiba:0, teppo:0, [ut]:1}, 9 * eff)
           .forEach(l => log(`⚔ ${l}`, 'good'));
@@ -10264,7 +10286,7 @@ function resolveTasks(){
         S.money -= 15;
         r.merit = (r.merit||0) + 2;
         if(!keikoGain(r, r.nai * eff))
-          log(`${r.name} 督課家業精進,修練進度 ${ri(S.keiko||0)}%。${tired}${grow(r,'nai')}`);
+          log(`${r.name} 督課家業精進,火候 ${ri(S.keiko||0)}/${keikoCost()}。${tired}${grow(r,'nai')}`);
         break;
       }
       case 'kaiden': {

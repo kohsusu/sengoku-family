@@ -158,6 +158,53 @@ const hud = ev(`skTreeHtml('bugei')`);
 ok('樹標示「已投 n 點」與可配點數', hud.indexOf('已投') >= 0 && hud.indexOf('可配 2 點') >= 0, '');
 ok('資源列示未配點', ev(`(()=>{ let h=''; try{ render(); }catch(e){} return String(skPt()); })()`)==='2', '');
 
+// ── 修練的節奏:一點的火候隨已得而漲 ──
+fresh('候試');
+ok('首點仍是 100 火候(系統要能自己教會玩家)', ev('keikoCost()') === 100, '');
+ev('S.keikoPt = 10;');
+ok('已得十點後,一點要 350', ev('keikoCost()') === 350, '');
+ev("S.keikoPt = 0; S.skBugei = {}; S.skSuiri = {}; S.skTrade = {};");
+
+// 全樹的總火候:三十點不該是四十五個「家臣・季」就湊得出來的東西
+{
+  let tot = 0;
+  for(let n = 0; n < 30; n++) tot += 100 + 25 * n;
+  ok('全樹總火候 ≈ 兩百一十個家臣・季(內政 66 者)', tot === 13875 && tot / 66 > 180 && tot / 66 < 240,
+     tot + ' 火候 ≈ ' + Math.round(tot / 66) + ' 個家臣・季');
+}
+
+// 三名家臣傾全力精進,也不該在第一個世代就練到極致
+{
+  fresh('竭試');
+  ev("S.retainers.forEach((r,i)=>{ if(i>0){ r.task='fushin'; r.trait=null; } });");
+  let s2 = 0;
+  while(s2 < 200 && ev('skCapLeft()') > 0){
+    ev("S.money=99999; S.retainers.forEach(r=>{r.stamina=100;r.sick=0;}); resolveTasks(); modalQueue.length=0;");
+    s2++;
+  }
+  ok('三人全力精進,練滿三十點仍需十年以上', s2 >= 40 && s2 <= 100,
+     s2 + ' 季 ≈ ' + (s2 / 4).toFixed(1) + ' 年');
+}
+
+// 練兵的半速管道:兵員已滿也還是操練了一季
+{
+  fresh('操試');
+  ev("S.retainers.forEach((r,i)=>{ r.task = i===1 ? 'drill' : 'rest'; });");
+  ev("S.soldiers = solCap(); S.keiko = 0;");
+  ev("S.retainers.forEach(r=>{r.stamina=100;r.sick=0;}); resolveTasks(); modalQueue.length=0;");
+  ok('丁壯已盡時,操練仍積修練火候(任務說明不可是空話)', ev('S.keiko') > 10,
+     '火候 ' + ev('ri(S.keiko)') + '(兵力 ' + ev('S.soldiers') + '/' + ev('solCap()') + ',募無可募)');
+}
+
+// 火候條要看得見——遞增成本不寫出來,只會被當成變慢
+{
+  fresh('條試');
+  ev('S.keikoPt = 6; S.keiko = 40;');
+  const bar = ev('keikoBar()');
+  ok('技能樹視窗示明「下一點火候 x/y」', bar.indexOf('下一點火候 40/250') >= 0 && bar.indexOf('再進者愈難') >= 0, '');
+  ev('S.keikoPt = 0; S.skBugei={}; S.skSuiri={}; S.skTrade={};');
+}
+
 let bad=0;
 for(const [n,c,note] of checks){ console.log((c?'✓':'✗'),n,note?(' — '+note):''); if(!c)bad++; }
 console.log(bad?'✗ 有未過':'全部通過');
