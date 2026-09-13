@@ -23,6 +23,46 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
+sandbox.Error = Error;
+
+// ── 錢流攔截(MONEY=1):112 個增減點手動標不現實,讓程式自己說錢花到哪 ──
+const MTRACK = !!process.env.MONEY;
+if(MTRACK) Error.stackTraceLimit = 80;   // 預設 10 層,遊戲的呼叫鏈比那深
+const MREC = {}, MDEC = {};
+const SCRIPT_LINE0 = HTML.slice(0, HTML.indexOf(scripts[0])).split(String.fromCharCode(10)).length;
+function mtrack(S){
+  if(!MTRACK || !S) return;
+  let v = S.money;
+  Object.defineProperty(S, 'money', {
+    configurable: true,
+    get(){ return v; },
+    set(x){
+      const d = x - v;
+      if(d && isFinite(d)){
+        const st = (new Error().stack || '').split(String.fromCharCode(10));
+        let line = 0;
+        for(let i = 1; i < st.length; i++){
+          const m = st[i].match(/game\.js:(\d+):/);
+          if(m){ line = +m[1] + SCRIPT_LINE0 - 1; break; }
+          // 模擬台自己的持家決策(側室・官位・公家・御用金…)走的是 Node 幀,
+          // 那是「玩家會做的事」而非遊戲程式,得分開記,否則會吃掉八成支出
+          if(/as money/.test(st[i])) continue;   // setter 自己那一幀
+          const h = st[i].match(/run\.js:(\d+):/);
+          if(h){ line = -(+h[1]); break; }
+        }
+        const k = line || 0;
+        const r = MREC[k] = MREC[k] || {in:0, out:0, n:0};
+        if(d > 0) r.in += d; else r.out += -d;
+        r.n++;
+        // 同一筆也按年代記一份:要看的是「規模變大之後收支怎麼分岔」
+        const dec = Math.floor(((g.S && g.S.year || 1545) - 1545) / 10) * 10;
+        const b = MDEC[dec] = MDEC[dec] || {in:0, out:0, game:0};
+        if(d > 0) b.in += d; else { b.out += -d; if(k > 0) b.game += -d; }
+      }
+      v = x;
+    }
+  });
+}
 vm.createContext(sandbox);
 try{ vm.runInContext(scripts[0], sandbox, {filename:'game.js'}); }
 catch(e){ console.error('BOOT FAIL:', e.message, '\n', (e.stack||'').split('\n').slice(0,6).join('\n')); process.exit(1); }
@@ -168,7 +208,8 @@ function household(P, rec){
   const kc = ev('kaniCost('+((S.kani||0)+1)+')');
   if((S.kani||0) < 2 && S.money >= kc*1.5){ S.money -= kc; sandbox.grantKani((S.kani||0)+1, '獻金於朝廷'); }
   const kug = ev('kugeCost()');
-  if(S.money >= kug*2.5 && Math.random() < 0.6){ S.money -= kug; S.kuge = (S.kuge||0)+1; sandbox.gainPrestige(6); }
+  // NOKUGE=1:關掉這個由模擬台發明的無底洞,好看清遊戲本身吸不吸得掉錢
+  if(!process.env.NOKUGE && S.money >= kug*2.5 && Math.random() < 0.6){ S.money -= kug; S.kuge = (S.kuge||0)+1; sandbox.gainPrestige(6); }
   const yc = ev('yatoiCost()'), yn = ev('yatoiN()');
   if(P.name !== '農本' && P.name !== '商賈' && S.money >= yc*3
      && S.soldiers < sandbox.solCap()*1.3 && Math.random() < 0.5){
@@ -334,6 +375,7 @@ for(let seed = 0; seed < N; seed++){
   const t0 = Date.now();
   try{
     g.startGame(g.newState('試' + seed, seed % 12, clan, mode, region));
+    mtrack(g.S);
     drain(P, rec);
     for(let i = 0; i < 71*4; i++){
       assign(P, g.S);
@@ -342,6 +384,7 @@ for(let seed = 0; seed < N; seed++){
       rec.decisions += drain(P, rec);
       if(i % 2 === 0) audit(g.S, rec, g.S.year+'-'+g.S.season);
       if(!rec.skYr && ev('skCapLeft()') <= 0) rec.skYr = g.S.year;   // 幾年練滿三十點
+      if(i % 8 === 0) (rec.mCurve = rec.mCurve || []).push([g.S.year, Math.round(g.S.money)]);
       { // 觸及範圍:一局裡玩家實際打得到／收得到的家數(擴圖之後最該問的一個數)
         const t = ev(`(()=>{ let n=0, far=0;
           for(const f of S.rivals){ if(!f.alive) continue;
@@ -375,7 +418,7 @@ for(let seed = 0; seed < N; seed++){
   Object.assign(rec, {
     ms: Date.now() - t0,
     year:S.year, over:!!S.gameOver, koku:S.kokudaka, prest:S.prestige, pop:S.pop,
-    sk:ev('skTotalLv()+skPt()'), skCap:ev('skCapLeft()')<=0,
+    sk:ev('skTotalLv()+skPt()'), skCap:ev('skCapLeft()')<=0, kuge:S.kuge||0,
     sol:S.soldiers, rice:Math.round(S.rice), money:Math.round(S.money), minshin:S.minshin,
     retainers:S.retainers.length, active:ev('activeR().length'),
     spare:S.retainers.filter(r=>r.spare).length, gens:(S.lineage||[]).length,
@@ -411,5 +454,34 @@ fs.writeFileSync(path.join(__dirname, 'runs.json'), JSON.stringify(runs.map(r=>{
   return {...rest2, audits:(r.audits||[]).slice(0,10), titleSet:[...new Set(titles)], logSet:[...new Set(logs)],
     lineSet:[...new Set(all)].filter(x=>x.trim()), tailLogs:logs.slice(-14)};
 }), null, 0));
+if(MTRACK){
+  const SRC = HTML.split(String.fromCharCode(10));
+  const rows = Object.entries(MREC).map(([line, r]) => ({line:+line, ...r}));
+  const totIn = rows.reduce((a,r)=>a+r.in,0), totOut = rows.reduce((a,r)=>a+r.out,0);
+  const dump = (title, key) => {
+    console.log(String.fromCharCode(10) + '【' + title + '】');
+    rows.filter(r=>r[key]>0).sort((a,b)=>b[key]-a[key]).slice(0,14).forEach(r=>{
+      const RUNSRC = fs.readFileSync(__filename,'utf8').split(String.fromCharCode(10));
+      const txt = r.line < 0 ? '[模擬台] ' + (RUNSRC[-r.line-1]||'').trim().slice(0,62)
+                : r.line === 0 ? '(定位不到)'
+                : (SRC[r.line-1]||'').trim().slice(0,74);
+      console.log('  ' + String(Math.round(r[key]/N)).padStart(7) + ' 貫/局 '
+        + (r[key]/(key==='in'?totIn:totOut)*100).toFixed(1).padStart(5) + '%  '
+        + ('index.html:'+r.line).padEnd(17) + txt);
+    });
+  };
+  console.log(String.fromCharCode(10) + '每局總收 ' + Math.round(totIn/N) + ' 貫,總支 '
+    + Math.round(totOut/N) + ' 貫,淨餘 ' + Math.round((totIn-totOut)/N) + ' 貫');
+  console.log(String.fromCharCode(10) + '【收支隨規模的分岔】(每局平均,貫)');
+  console.log('  年代        收入      總支出    其中遊戲自己的支出   遊戲吸收率');
+  Object.keys(MDEC).sort((a,b)=>a-b).forEach(d=>{
+    const b = MDEC[d];
+    console.log('  ' + String(+d).padStart(2) + '~' + String(+d+9).padEnd(4)
+      + String(Math.round(b.in/N)).padStart(9) + String(Math.round(b.out/N)).padStart(11)
+      + String(Math.round(b.game/N)).padStart(15) + String((b.game/(b.in||1)*100).toFixed(0)+'%').padStart(13));
+  });
+  dump('錢從哪來', 'in');
+  dump('錢往哪去', 'out');
+}
 console.log(JSON.stringify({n:runs.length, errs:runs.filter(r=>r.err).length,
   avgMs:Math.round(runs.reduce((a,r)=>a+r.ms,0)/runs.length)}));
