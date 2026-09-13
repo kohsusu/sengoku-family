@@ -37,7 +37,8 @@ ok('未配之點佔用總額度', ev(`skCapLeft()`)===29, '餘額 '+ev(`skCapLef
 fresh('速試');
 const rate = t => ev(`(()=>{ S.keiko=0; S.keikoPt=0; S.skSuiri={}; S.skTrade={}; S.skBugei={};
   S.retainers.forEach(x=>{ x.task='rest'; x.stamina=100; x.sick=0; });   // 只留受測者,免得旁人的任務混進進度
-  const r=S.retainers[1]; r.nai=80; r.bu=80; r.chi=80; r.stamina=100; r.sick=0; r.task='${t}';
+  // 特性會歪掉比值(算盤達人 經商 +25% → 0.625,曾使此條八次裡失敗一次)
+  const r=S.retainers[1]; r.nai=80; r.bu=80; r.chi=80; r.stamina=100; r.sick=0; r.trait=null; r.task='${t}';
   S.money=99999; S.rice=9999; S.army={ashigaru:20,yumi:0,kiba:0,teppo:0}; S.soldiers=20; S.unitPick='ashigaru';
   const before=S.keiko||0; resolveTasks(); return (S.keiko||0) - before; })()`);
 const rF = rate('fushin'), rD = rate('drill'), rT = rate('trade');

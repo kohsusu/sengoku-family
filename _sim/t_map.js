@@ -523,6 +523,52 @@ const p1 = ev('playerPower()');
 ok('臣服者的直轄只灌回一成五(原為二成五,雪球太快)',
    Math.abs((p1 - p0) - Math.round(40000*0.15/40)) <= 2, '國力 ' + p0 + ' → ' + p1 + '(+' + (p1-p0) + ')');
 
+// ── 29. 丙包:三語的骨架與誠實 ──
+// 這一組直接讀原始檔:I18N 只在 LANG!=='zh' 時才建表,而探針跑在中文模式下。
+// 界定用「下一個標記」而非換行,省得又被轉義層吃掉。
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const i0 = src.indexOf('const I18N ='), i1 = src.indexOf('const I18N_RX', i0);
+  const tbl = src.slice(i0, i1);
+  const keys = {};
+  for(const m of tbl.matchAll(/^'([^']+)':\[/gm)) keys[m[1]] = (keys[m[1]] || 0) + 1;
+  const dup = Object.keys(keys).filter(k => keys[k] > 1);
+  ok('I18N 無重複鍵(重複者後定義勝,前者是死條目)', dup.length === 0,
+     dup.join(' ') || Object.keys(keys).length + ' 條詞條');
+
+  const FRAME = ['屯田開墾','農務','練兵','經商','精進(家業)','音信(鄰好)','取次(懷柔從屬)','休養',
+                 '中立','名門','武斷','門徒','家老','侍大將','當主','威望','民心','人口',
+                 '今川方','織田家','北條方','無主之眾','🔊 音效'];
+  const missing = FRAME.filter(k => !keys[k]);
+  ok('介面骨架詞條齊備(任務・性格・身分・陣營・資源)', missing.length === 0,
+     missing.join(' ') || FRAME.length + ' 項俱在');
+
+  // 值裡可能有方括號(如 '[year-end autosave]'),故不以 ] 斷尾,改數逗號分隔的兩側
+  let noPair = '';
+  for(const line of tbl.split(String.fromCharCode(10))){
+    const m = line.match(/^'([^']+)':\[(.*)\],?$/);
+    if(!m) continue;
+    if(m[2].split("','").length < 2){ noPair = m[1] + ' → ' + m[2].slice(0, 40); break; }
+  }
+  ok('每條詞條皆備英日兩側', !noPair, noPair || Object.keys(keys).length + ' 條俱全');
+
+  ok('家名已羅馬字(今川方 → House Imagawa)',
+     tbl.indexOf("'今川方':['House Imagawa'") > 0 && tbl.indexOf("'北條方':['House Hōjō'") > 0, '');
+
+  ok('切換語言時說明「譯了什麼」——不默默給半成品',
+     src.indexOf('Interface translated. The chronicle itself') > 0
+     && src.indexOf('画面表記は翻訳済み') > 0, '');
+
+  const rx0 = src.indexOf('const I18N_RX'), rx1 = src.indexOf('function txText', rx0);
+  const rxSeg = src.slice(rx0, rx1);
+  ok('組合型字串走正則(好感 N・X郡・X方)',
+     rxSeg.indexOf('Favour $1') > 0 && rxSeg.indexOf('$1 District') > 0 && rxSeg.indexOf('House $1') > 0,
+     (rxSeg.match(/\[\//g) || []).length + ' 條規則');
+
+  ok('中文模式不動任何字(翻譯只在顯示層)',
+     ev('LANG') === 'zh' && ev('I18N_RX.length') === 0 && ev("txText('農務')") === null, '');
+}
+
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
 console.log(n?'✗ 有未過':'全部通過');

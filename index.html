@@ -86,6 +86,8 @@
     border-radius:4px;padding:5px 9px;cursor:pointer;letter-spacing:.04em}
   #rivalBox .cardTitle button:hover{background:#f3ead0}
   #rivalBox .farOn{float:right;font-size:11px;color:var(--accent2);font-weight:600}
+  #langNote{font-size:11px;color:var(--ink2);opacity:.85;text-align:right;
+    line-height:1.6;margin-top:3px;max-width:46ch;margin-left:auto}
   #mapStage{position:relative}
   #map{width:100%;height:auto;display:block;border-radius:6px;
     cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -477,6 +479,7 @@
       <button class="ghost" style="padding:2px 8px" onclick="setLang('en')">English</button>
       <button class="ghost" style="padding:2px 8px" onclick="setLang('ja')">日本語</button>
       <button class="ghost" id="btnSfxT" style="padding:2px 8px" onclick="auUnlock();sfxToggle()">🔊 音效</button>
+      <div id="langNote"></div>
     </div>
     <h1>戰國家族記</h1>
     <div class="sub">— 亂世夾縫中的小豪族 —</div>
@@ -599,7 +602,7 @@
 
 <script>
 'use strict';
-const BUILD = 'rc2';
+const BUILD = 'i18a';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -613,10 +616,217 @@ const LANG = (()=>{ try{
 function setLang(l){ try{ localStorage.setItem('sengoku_lang', l); }catch(e){} location.reload(); }
 const LI = LANG==='en' ? 0 : 1;   // [en, ja]
 const I18N = {
+// ── 介面骨架(取樣自實機:任務名各出現 144 次、性格 710 次、陣營名 255 次) ──
+// 日文一側多為同字異體(繁→新字體),故不少詞條僅作字形轉換。
+'屯田開墾':['Reclaim land','屯田開墾'],
+'農務':['Farm work','農務'],
+'狩獵':['Hunt','狩猟'],
+'練兵':['Drill troops','練兵'],
+'經商':['Trade','商い'],
+'精進(家業)':['Devote (household arts)','精進(家業)'],
+'教育子弟':['Educate children','子弟の教育'],
+'音信(鄰好)':['Envoy gifts (neighbours)','音信(隣好)'],
+'取次(懷柔從屬)':['Liaison (vassal clans)','取次(従属懐柔)'],
+'買田':['Buy fields','田を買う'],
+'諜報':['Espionage','諜報'],
+'說法':['Preach','説法'],
+'廻船':['Sea trade','廻船'],
+'城砦普請':['Build fortress','城砦普請'],
+'樂市':['Free market','楽市'],
+'流言':['Spread rumours','流言'],
+'祈禱':['Pray','祈祷'],
+'造船':['Build ships','造船'],
+'郡奉行':['Magistrate of districts','郡奉行'],
+'勘定奉行':['Magistrate of finance','勘定奉行'],
+'軍奉行':['Magistrate of war','軍奉行'],
+'普請奉行':['Magistrate of works','普請奉行'],
+'民政奉行':['Magistrate of people','民政奉行'],
+'休養':['Rest','休養'],
+// 性格・外交性向
+'名門':['Pedigree','名門'],
+'武斷':['Martial','武断'],
+'海賊':['Sea raider','海賊'],
+'商業':['Mercantile','商業'],
+'保守':['Conservative','保守'],
+'親今川':['Pro-Imagawa','親今川'],
+'中立':['Neutral','中立'],
+'門徒':['Devotee','門徒'],
+'無主':['Masterless','無主'],
+'無主之眾':['Masterless clans','無主の衆'],
+// 評定方針
+'富國':['Enrich','富国'],
+'強兵':['Strengthen','強兵'],
+'攀附':['Seek patron','attach'],
+'築城':['Fortify','築城'],
+'自立':['Independence','自立'],
+'併吞':['Annex','併呑'],
+// 家業・身分
+'國人':['Kokujin','国人'],
+'商人':['Merchant','商人'],
+'寺社':['Temple','寺社'],
+'水軍':['Naval','水軍'],
+'忍':['Shinobi','忍'],
+'當主':['Head','当主'],
+'家老':['Chief retainer','家老'],
+'侍大將':['Captain','侍大将'],
+'部將':['Officer','部将'],
+'徒士頭':['Footguard captain','徒士頭'],
+'一門':['Kin','一門'],
+'譜代':['Hereditary','譜代'],
+'新參':['Newcomer','新参'],
+'客將':['Guest general','客将'],
+// 兵種與適性
+'弓':['Bow','弓'],
+'騎馬':['Cavalry','騎馬'],
+'鐵砲':['Arquebus','鉄砲'],
+'槍術':['Spear','槍術'],
+'弓術':['Archery','弓術'],
+'馬術':['Horsemanship','馬術'],
+'砲術':['Gunnery','砲術'],
+// 資源列
+'錢':['Coin','銭'],
+'人口':['People','人口'],
+'兵':['Troops','兵'],
+'威望':['Prestige','威望'],
+'民心':['Morale','民心'],
+'商路':['Trade routes','商路'],
+'武藝':['Martial arts','武芸'],
+'城':['Castle','城'],
+'船':['Ships','船'],
+'體力':['Stamina','体力'],
+'忠誠':['Loyalty','忠誠'],
+'武勇':['Valour','武勇'],
+'內政':['Admin','内政'],
+'智謀':['Wit','智謀'],
+'年俸':['Stipend','年俸'],
+'功勳':['Merit','功勲'],
+'教養':['Learning','教養'],
+'好感':['Favour','好感'],
+'關係':['Relations','関係'],
+'國力':['Power','国力'],
+'直轄':['Demesne','直轄'],
+'從屬':['Vassal','従属'],
+'臣服':['Submitted','臣従'],
+// 四季與距離
+'夏':['Summer','夏'],
+'秋':['Autumn','秋'],
+'冬':['Winter','冬'],
+'鄰境':['Neighbouring','隣境'],
+'遠隔':['Distant','遠隔'],
+'接壤(唇齒相依)':['Adjacent (interdependent)','接壌(唇歯の間柄)'],
+'隔一國之遙':['A province away','一国を隔てる'],
+'道路不通,兵馬難及':['Roads impassable; armies cannot reach','道通ぜず、兵馬及び難し'],
+'冷淡':['Cold','冷淡'],
+'減效':['Reduced','効減'],
+// 常用按鈕與語句
+'領命':['Understood','承知'],
+'退下':['Dismiss','下がれ'],
+'告辭':['Take leave','いとまごい'],
+'罷了':['Let it be','よかろう'],
+'確定':['Confirm','決定'],
+'取消':['Cancel','取消'],
+'復原至選中欄':['Restore to selected slot','選択欄へ復元'],
+'先祖の加護':['Ancestral protection','先祖の加護'],
+'〔歲末自動記錄〕':['[year-end autosave]','〔歳末自動記録〕'],
+'諸國情報':['Intelligence','諸国情報'],
+'大名情勢':['Daimyo situation','大名情勢'],
+'勢力範圍':['Spheres of influence','勢力範囲'],
+'家業修練':['Household arts','家業修練'],
+'天下統一':['Unify the realm','天下統一'],
+'⚠過勞之虞':['⚠ risk of exhaustion','⚠過労の虞'],
+// 家紋
+'丸に三ツ杉':['Three cedars in a ring','丸に三ツ杉'],
+'三日月':['Crescent moon','三日月'],
+'三ツ星':['Three stars','三ツ星'],
+'井桁':['Well-frame','井桁'],
+'左三ツ巴':['Three comma-swirls','左三ツ巴'],
+'垂稻':['Drooping rice','垂れ稲'],
+'遠山':['Distant mountains','遠山'],
+'青海波':['Seigaiha waves','青海波'],
+'違い矢':['Crossed arrows','違い矢'],
+'龜甲に星':['Star in tortoiseshell','亀甲に星'],
+'雁金':['Wild geese','雁金'],
+'木瓜':['Mokkō','木瓜'],
+'🔊 音效':['🔊 Sound','🔊 音声'],
+// ── 大名家名(羅馬字);「今川方」原本被正則譯成 House 今川 ──
+'今川':['Imagawa','今川'],
+'今川方':['House Imagawa','今川方'],
+'今川家':['House Imagawa','今川家'],
+'織田':['Oda','織田'],
+'織田方':['House Oda','織田方'],
+'織田家':['House Oda','織田家'],
+'齋藤':['Saitō','斉藤'],
+'齋藤方':['House Saitō','斉藤方'],
+'齋藤家':['House Saitō','斉藤家'],
+'松平':['Matsudaira','松平'],
+'松平方':['House Matsudaira','松平方'],
+'松平家':['House Matsudaira','松平家'],
+'德川':['Tokugawa','徳川'],
+'德川方':['House Tokugawa','徳川方'],
+'德川家':['House Tokugawa','徳川家'],
+'武田':['Takeda','武田'],
+'武田方':['House Takeda','武田方'],
+'武田家':['House Takeda','武田家'],
+'長尾':['Nagao','長尾'],
+'長尾方':['House Nagao','長尾方'],
+'長尾家':['House Nagao','長尾家'],
+'上杉':['Uesugi','上杉'],
+'上杉方':['House Uesugi','上杉方'],
+'上杉家':['House Uesugi','上杉家'],
+'羽柴':['Hashiba','羽柴'],
+'羽柴方':['House Hashiba','羽柴方'],
+'羽柴家':['House Hashiba','羽柴家'],
+'豐臣':['Toyotomi','豊臣'],
+'豐臣方':['House Toyotomi','豊臣方'],
+'豐臣家':['House Toyotomi','豊臣家'],
+'朝倉':['Asakura','朝倉'],
+'朝倉方':['House Asakura','朝倉方'],
+'朝倉家':['House Asakura','朝倉家'],
+'六角':['Rokkaku','六角'],
+'六角方':['House Rokkaku','六角方'],
+'六角家':['House Rokkaku','六角家'],
+'淺井':['Azai','浅井'],
+'淺井方':['House Azai','浅井方'],
+'淺井家':['House Azai','浅井家'],
+'三好':['Miyoshi','三好'],
+'三好方':['House Miyoshi','三好方'],
+'三好家':['House Miyoshi','三好家'],
+'本願寺':['Honganji','本願寺'],
+'本願寺方':['House Honganji','本願寺方'],
+'本願寺家':['House Honganji','本願寺家'],
+'足利':['Ashikaga','足利'],
+'足利方':['House Ashikaga','足利方'],
+'足利家':['House Ashikaga','足利家'],
+'畠山':['Hatakeyama','畠山'],
+'畠山方':['House Hatakeyama','畠山方'],
+'畠山家':['House Hatakeyama','畠山家'],
+'北畠':['Kitabatake','北畠'],
+'北畠方':['House Kitabatake','北畠方'],
+'北畠家':['House Kitabatake','北畠家'],
+'北條':['Hōjō','北条'],
+'北條方':['House Hōjō','北条方'],
+'北條家':['House Hōjō','北条家'],
+'山內上杉':['Yamanouchi-Uesugi','山内上杉'],
+'山內上杉方':['House Yamanouchi-Uesugi','山内上杉方'],
+'山內上杉家':['House Yamanouchi-Uesugi','山内上杉家'],
+'里見':['Satomi','里見'],
+'里見方':['House Satomi','里見方'],
+'里見家':['House Satomi','里見家'],
+'佐竹':['Satake','佐竹'],
+'佐竹方':['House Satake','佐竹方'],
+'佐竹家':['House Satake','佐竹家'],
+
+// 評定方針(帶旗標前綴)
+'📋富國':['📋Enrich','📋富国'],
+'📋強兵':['📋Strengthen','📋強兵'],
+'📋攀附':['📋Seek patron','📋attach'],
+'📋築城':['📋Fortify','📋築城'],
+'📋自立':['📋Independence','📋自立'],
+'📋併吞':['📋Annex','📋併呑'],
+
 '戰國家族記':['Sengoku Family Chronicle','戦国家族記'],
 '— 亂世夾縫中的小豪族 —':['— A minor clan in the cracks of a warring age —','— 乱世の狭間の小さき豪族 —'],
 '存檔欄(可保存四份家史)':['Save slots (up to four family chronicles)','セーブ欄(家史を四つまで保存可)'],
-'── 空欄 ──':['── empty ──','── 空き ──'],
 '家名(姓)':['Family name','家名(姓)'],
 '家紋(選一個代代相傳)':['Family crest (passed down the generations)','家紋(代々受け継ぐ一つを)'],
 '起始之國(決定你的鄰人與命運)':['Starting province (decides your neighbours and fate)','始まりの国(隣人と運命を決める)'],
@@ -668,6 +878,16 @@ const I18N = {
 '亂世諸眾(AI 扮演)':['Other clans (AI-run)','乱世の諸衆(AI担当)']
 };
 const I18N_RX = LANG==='zh' ? [] : [
+  // 組合型:數字與人名會變,故走正則(替換值是字串,不是函式)
+  [/^好感 (-?\d+)$/, 'Favour $1', '好感 $1'],
+  [/^教養 (-?\d+)$/, 'Learning $1', '教養 $1'],
+  [/^忠誠 (-?\d+)$/, 'Loyalty $1', '忠誠 $1'],
+  [/^體力 (-?\d+)$/, 'Stamina $1', '体力 $1'],
+  [/^國力 (-?\d+)$/, 'Power $1', '国力 $1'],
+  [/^([一-鿿]{2,3})郡$/, '$1 District', '$1郡'],
+  [/^([一-鿿]{2,4})方$/, 'House $1', '$1方'],
+  [/^・鄰境$/, '・Neighbouring', '・隣境'],
+  [/^・遠隔$/, '・Distant', '・遠隔'],
 [/([辰巳午未申])の刻/g, 'Hour of $1', '$1の刻'],
 [/崩潰,潰兵四散!/g, ' breaks -- troops scatter!', 'は崩れ、潰走!'],
 [/見大勢已去,全軍引き揚げ——不發一矢,揚長而去。/g, ' sees the day is lost and withdraws intact, without loosing an arrow.', 'は大勢決したと見て、矢の一本も放たず全軍引き揚げ。'],
@@ -737,6 +957,12 @@ if(typeof MutationObserver !== 'undefined' && typeof window !== 'undefined' && L
       }
     }).observe(document.body, {childList:true, subtree:true, characterData:true});
     txWalk(document.body);
+    // 誠實說明:介面骨架已譯,敘事文仍是中文。
+    // 標題畫面寫著三語卻只譯了介面,那是承諾了做不到的事;說清楚就不是。
+    const nd = document.getElementById('langNote');
+    if(nd && LANG !== 'zh') nd.textContent = LANG === 'en'
+      ? 'Interface translated. The chronicle itself — events, letters, retainer speech — remains in Chinese.'
+      : '画面表記は翻訳済み。記録本文(事件・書状・家臣の言)は中国語のままです。';
     const cur = {zh:'中文', en:'English', ja:'日本語'}[LANG];
     document.querySelectorAll('#langRow button').forEach(b=>{ if(b.textContent === cur){ b.style.fontWeight='bold'; b.style.borderColor='var(--crimson)'; } });
   });
