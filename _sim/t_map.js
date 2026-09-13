@@ -469,12 +469,24 @@ g.startGame(g.newState('默試', 0, 'kokujin', 'gozoku', 'mikawa'));
 ok('開局即有一人在跑音信', ev(`S.retainers.some(r=>r.task === 'onshin')`),
    ev(`S.retainers.map(r=>TASKS[r.task]?TASKS[r.task].name:r.task).join(' / ')`));
 // 家老(智 88)才是全家最高,而你不會派首席重臣去跑腿;派的是智謀次高的徒士頭
-ok('跑音信的是智謀數一數二者',
-   ev(`(()=>{ const o=S.retainers.find(r=>r.task==='onshin'); if(!o) return false;
-        const rank=S.retainers.slice(1).map(r=>r.chi).sort((a,b)=>b-a);
-        return o.chi >= rank[1]; })()`),
-   ev(`(()=>{ const o=S.retainers.find(r=>r.task==='onshin');
-        return o ? o.name+' 智謀 '+o.chi+'(全家 '+S.retainers.slice(1).map(r=>r.chi).sort((a,b)=>b-a).join('/')+')' : ''; })()`));
+// 單局看名次不穩:服部(底 80±4)與鳥居(底 75±4)的範圍重疊,會互換。
+// 取兩百局的平均,測的才是設計意圖而非一局的骰子。
+{
+  let sumOnshin = 0, sumOther = 0, cnt = 0, name = '';
+  for(let i=0;i<200;i++){
+    const st = g.newState('信'+i, 0, 'kokujin', 'gozoku', 'mikawa');
+    const o = st.retainers.find(r=>r.task === 'onshin');
+    if(!o) continue;
+    name = o.name;
+    sumOnshin += o.chi;
+    const others = st.retainers.slice(1).filter(r=>r !== o && r.role !== '家老');
+    sumOther += others.reduce((a,r)=>a+r.chi, 0) / Math.max(1, others.length);
+    cnt++;
+  }
+  const mO = sumOnshin / cnt, mR = sumOther / cnt;
+  ok('跑音信的是智謀較高者(家老另有要務,不派他跑腿)', cnt === 200 && mO > mR + 3,
+     `${name} 平均智謀 ${mO.toFixed(1)} vs 其餘(不含家老) ${mR.toFixed(1)}`);
+}
 
 // ── 27. 遣間者探遠國 ──
 g.startGame(g.newState('諜試', 0, 'kokujin', 'gozoku', 'mikawa'));
@@ -567,6 +579,53 @@ ok('臣服者的直轄只灌回一成五(原為二成五,雪球太快)',
 
   ok('中文模式不動任何字(翻譯只在顯示層)',
      ev('LANG') === 'zh' && ev('I18N_RX.length') === 0 && ev("txText('農務')") === null, '');
+}
+
+// ── 30. 大名昇格之路:清單上的每一條都要有可行的行動 ──
+{
+  const KINDS = ['kokujin','merchant','shinobi','temple','suigun'];
+  // ① 昇格必要條件之一是「城砦 3 級」,故五種家業都得蓋得了城
+  const cantBuild = KINDS.filter(ct => {
+    g.startGame(g.newState('築' + ct, 0, ct, 'gozoku', 'mikawa'));
+    ev("modalQueue.length=0; $('modalBack').classList.add('hidden');");
+    return ev("!(!TASKS['shiro'].clan || TASKS['shiro'].clan === S.clanType)");
+  });
+  ok('五種家業皆可築城(昇格須城砦 3 級,不可有無從達成的條件)',
+     cantBuild.length === 0, cantBuild.join(' ') || '國人・商人・忍・寺社・水軍俱可');
+
+  // 非國人眾真的蓋得起來(不只是選單開放)
+  g.startGame(g.newState('築試', 0, 'merchant', 'gozoku', 'mikawa'));
+  ev("modalQueue.length=0; $('modalBack').classList.add('hidden'); S.money=99999;");
+  ev("S.retainers.forEach((r,i)=>{ r.task = i===1 ? 'shiro' : 'rest'; r.stamina=100; r.sick=0; });"
+     + " S.retainers[1].nai=66; S.retainers[1].trait=null;");
+  let seasons = 0;
+  while(ev('S.fort||0') < 3 && seasons++ < 40)
+    ev("S.money=99999; S.retainers.forEach(r=>{r.stamina=100;r.sick=0;}); resolveTasks();");
+  ok('商人眾一名家臣可於十季內築到三級', ev('S.fort||0') >= 3 && seasons <= 10,
+     seasons + ' 季到 ' + ev('S.fort||0') + ' 級');
+
+  // ② 忍者眾的「影の國主」不得開局即達成
+  const early = [];
+  for(const reg of ['mikawa','owari','totomi','shinano','omi','iga','kii','echizen']){
+    g.startGame(g.newState('影' + reg, 0, 'shinobi', 'gozoku', reg));
+    ev("modalQueue.length=0; $('modalBack').classList.add('hidden');");
+    if(ev('DAIMYO_PATH.shinobi.extra()')) early.push(reg);
+  }
+  ok('影の國主:八個起始國皆非開局即達成', early.length === 0,
+     early.join(' ') || '須先成為境內之首');
+  // 但長大之後要達成得了,否則就是死路
+  g.startGame(g.newState('影大', 0, 'shinobi', 'gozoku', 'iga'));
+  ev("modalQueue.length=0; $('modalBack').classList.add('hidden'); S.kokudaka=6000; S.prestige=90;");
+  ok('影の國主:成為境內之首後即達成', ev('DAIMYO_PATH.shinobi.extra()'), '');
+
+  // ③ 五條路徑的專屬條件都要真的可作用(不是恆真也不是恆假)
+  const always = [];
+  for(const ct of KINDS){
+    g.startGame(g.newState('恆' + ct, 0, ct, 'gozoku', 'mikawa'));
+    ev("modalQueue.length=0; $('modalBack').classList.add('hidden');");
+    if(ev('daimyoReq().path.extra()')) always.push(ct);
+  }
+  ok('五條專屬路徑開局皆未達成', always.length === 0, always.join(' ') || '五者俱須經營');
 }
 
 let n=0;

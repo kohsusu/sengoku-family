@@ -76,7 +76,9 @@ const PERSONAS = [
   like:/謀反|自立|通款|密約|隱田|抜け駆け|絕緣|勧誘|壓迫|諜報|流言|出兵|討伐|趁虛|根切|昇格|迫使|迂迴/,
   hate:/忍辱|納貢|退讓|求和|婉拒/, tax:2}
 ];
-const CLANS = ['kokujin'];   // 豪族立志:玩家僅國人眾
+const CLANS = process.env.FORCE_C ? [process.env.FORCE_C] : ['kokujin'];
+// 豪族立志:預設僅國人眾。但另外四種家業從來沒被這座台子測過——
+// FORCE_C=merchant|shinobi|temple|suigun 可單獨鎖定一種來量。
 
 const ev = code => vm.runInContext(code, sandbox);
 const $ = id => doc.getElementById(id);

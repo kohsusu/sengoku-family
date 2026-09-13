@@ -602,7 +602,7 @@
 
 <script>
 'use strict';
-const BUILD = 'i18a';
+const BUILD = 'pr1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -1246,7 +1246,9 @@ const TASKS = {
   spy:   {name:'諜報',     tire:12, clan:'shinobi',  hint:'潛入番付最強的非姻親國人眾家中刺探破壞(依智謀):竊取錢財或毀其田畝;敗露則結怨。耗體力 12。'},
   sekkyo:{name:'說法',     tire:8,  clan:'temple',   hint:'開壇說法教化領民(依智謀):民心提升、門徒來投(人口+)。民心是寺社的財源與兵源。耗體力 8。'},
   kaisen:{name:'廻船',     tire:12, clan:'suigun',   hint:'出船行商遠地(依智謀),獲利遠勝陸路——但一成機率遭遇風浪血本無歸。耗體力 12。'},
-  shiro: {name:'城砦普請', tire:15, clan:'kokujin',  hint:'修築城砦(依內政,15 貫/季,進度制):每級使籠城守勢 +8%、竣工時威望 +1,上限 5 級。武家立身之本。'},
+  shiro: {name:'城砦普請', tire:15, hint:'修築城砦(依內政,15 貫/季,進度制):每級使籠城守勢 +8%、竣工時威望 +1,上限 5 級。'
+    +'武家築城、商人環濠、寺社土壘、忍者立砦、水軍據湊——形制各異,而固其居館之意則一。'
+    +'(昇格大名須三級;此前限國人眾,使另四種家業看得到條件卻無從達成。)耗體力 15。'},
   rakuichi:{name:'樂市',   tire:10, clan:'merchant', hint:'開設樂市樂座(依智謀,30 貫/季,進度制):每級每季自入 3 貫、人口上限 +30,上限 3 級。'},
   ryuugen:{name:'流言',    tire:10, clan:'shinobi',  hint:'散布流言中傷番付最強的非姻親對手(依智謀):其威望下降、番付動搖;敗露則結怨。'},
   kitou: {name:'祈禱',     tire:6,  clan:'temple',   hint:'為家中祈福息災(依智謀):全體家臣體力 +6,臥病者痊癒加快。'},
@@ -6206,8 +6208,20 @@ const DAIMYO_PATH = {
   merchant:{name:'代官職の直轄化', extra:()=>S.money >= 800,
     extraLabel:'錢 800 貫(買下代官職)',
     body:()=>`歷年放貸與御用金,已讓數處代官職落入${S.famName}家之手。\n如今只消再一筆錢,便可將這些徵稅之權盡數直轄——\n\n今井宗久以算盤撼動天下,你以金錢買下了一國。`},
-  shinobi: {name:'惣國一揆結成——影の國主', extra:()=>S.rivals.filter(f=>f.alive && (!f.lord || f.lord==='player')).length >= 5,
-    extraLabel:'國內無主(或臣屬於你)之眾 5 家以上',
+  // 此條原本數的是**全世界**的無主之眾(擴圖後 49 家,開局即達成);
+  // 改數境內之後仍不夠——紀伊 100%、近江 86%、伊賀 82% 開局就無主,
+  // 而那是史實(伊賀本就是無守護的惣國一揆)。
+  // 真正的門檻不在「境內有沒有無主之眾」,而在**你是不是那個總代**:
+  // 故加一條「境內家格之首」。伊賀開局的百地四百石,推戴不了誰。
+  shinobi: {name:'惣國一揆結成——影の國主',
+    extra:()=>{
+      const R = myReach() * 1.2;
+      const inR = S.rivals.filter(f=>f.alive && pdist(f) <= R);
+      const free = inR.filter(f=>!f.lord || f.lord === 'player');
+      if(free.length < 5) return false;
+      return inR.every(f => f.lord === 'player' || score(f) <= playerScore());
+    },
+    extraLabel:'境內無主(或臣屬於你)之眾 5 家以上,且你為境內家格之首',
     body:()=>`大名的影響力已被暗中掏空,三河境內再無強權。\n諸家在暗夜中歃血,結成「惣國一揆」,共推${S.famName}家為總代——\n\n伊賀之國無守護,以忍者眾自治數十年。今三河亦然。`},
   temple:  {name:'一國一揆——百姓ノ持タル國', extra:()=>S.minshin >= 85,
     extraLabel:'民心 85 以上(門徒歸心)',
