@@ -66,9 +66,36 @@ function mtrack(S){
 vm.createContext(sandbox);
 try{ vm.runInContext(scripts[0], sandbox, {filename:'game.js'}); }
 catch(e){ console.error('BOOT FAIL:', e.message, '\n', (e.stack||'').split('\n').slice(0,6).join('\n')); process.exit(1); }
+// ECON=sol,chi 掃描家中經費的兩個槓桿(反解係數,不憑感覺填)
+if(process.env.ECON){
+  const [a,b] = process.env.ECON.split(',').map(Number);
+  vm.runInContext('ECON.sol=' + a + '; ECON.chi=' + b + ';', sandbox);
+}
 
 const g = sandbox.window.__game;
 if(!g) throw new Error('__game hook missing');
+
+// ── 空視窗獵捕:pumpModal 的 for(const c of m.choices) 在空陣列時什麼都不加,
+//    卻照樣 remove('hidden') —— 於是開出一個沒有按鈕的框,遊戲就此卡死。
+//    在推進佇列的當下記住是誰推的。
+Error.stackTraceLimit = 80;
+const EMPTY = {};
+const EMPTY_LINE0 = HTML.slice(0, HTML.indexOf(scripts[0])).split(String.fromCharCode(10)).length;
+sandbox.__emptyModal = function(title, stack){
+  let line = 0;
+  for(const fr of String(stack).split(String.fromCharCode(10)).slice(1)){
+    const m = fr.match(/game\.js:(\d+):/);
+    if(m){ line = +m[1] + EMPTY_LINE0 - 1; break; }
+  }
+  const k = line + '|' + (title || '(無題)');
+  EMPTY[k] = (EMPTY[k] || 0) + 1;
+};
+vm.runInContext(`(function(){ const q = queueModal;
+  queueModal = function(m){
+    if(!m || !m.choices || !m.choices.length) __emptyModal(m && m.title, new Error().stack);
+    return q.apply(this, arguments);
+  };
+})();`, sandbox);
 
 // render() 在墊片下會炸(innerHTML 不生子節點),換成只保留「會改狀態」的部分
 vm.runInContext(`
@@ -143,7 +170,17 @@ function drain(P, rec){
     rec.titles.push($('modalTitle').textContent);
     rec.bodies.push($('modalBody').textContent);
     const b = pick(P);
-    if(!b || b === 'BLOCK'){ $('modalBack').classList.add('hidden'); break; }
+    // 一個按鈕都沒有 = 使用者看到的「空視窗,沒有東西可點」。
+    // 原本這裡默默把視窗藏起來繼續跑,等於把死鎖掃到地毯下——現在記下來。
+    if(!b){
+      (rec.deadEnd = rec.deadEnd || []).push({y:g.S && g.S.year, t:$('modalTitle').textContent,
+        body:($('modalBody').textContent||'').slice(0,60),
+        hud:($('modalHud').innerHTML||'').length, ch:($('modalChoices').innerHTML||'').length,
+        q:ev('modalQueue.length'), kind:($('modalCard')&&$('modalCard').dataset&&$('modalCard').dataset.kind)||'',
+        prev:(rec.titles||[]).slice(-3).join(' > ')});
+      $('modalBack').classList.add('hidden'); break;
+    }
+    if(b === 'BLOCK'){ $('modalBack').classList.add('hidden'); break; }
     b.click();
   }
   if(n >= 500){ rec.storm = (rec.storm||0)+1; rec.stormAt = $('modalTitle').textContent; }
@@ -482,6 +519,22 @@ if(MTRACK){
   });
   dump('錢從哪來', 'in');
   dump('錢往哪去', 'out');
+}
+{
+  const rows = Object.entries(EMPTY).sort((a,b)=>b[1]-a[1]);
+  const SRC2 = HTML.split(String.fromCharCode(10));
+  if(rows.length){
+    console.log(String.fromCharCode(10) + '【推進佇列時就沒有選項的視窗】');
+    rows.slice(0,12).forEach(([k,n])=>{
+      const [line, title] = k.split('|');
+      console.log('  ×' + String(n).padStart(4) + '  ' + ('index.html:'+line).padEnd(18) + title);
+      console.log('            ' + (SRC2[+line-1]||'').trim().slice(0,86));
+    });
+  } else console.log(String.fromCharCode(10) + '推進佇列時皆有選項(空視窗來自別處)');
+  const de = [].concat(...runs.map(r=>r.deadEnd||[]));
+  console.log('模擬台實際撞到沒有按鈕的視窗:' + de.length + ' 次');
+  de.slice(0,6).forEach(d=>console.log('   ' + d.y + ' 年  題「' + (d.t||'') + '」 內文「'
+    + (d.body||'').replace(/\s+/g,' ') + '」'));
 }
 console.log(JSON.stringify({n:runs.length, errs:runs.filter(r=>r.err).length,
   avgMs:Math.round(runs.reduce((a,r)=>a+r.ms,0)/runs.length)}));

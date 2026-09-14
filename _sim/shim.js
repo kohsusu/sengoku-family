@@ -106,7 +106,11 @@ const doc = {
   createElement: t => new El(t),
   createElementNS: (ns,t) => new El(t),
   getElementById(id){
-    if(!byId.has(id)){ const e = new El('div'); e.id = id; byId.set(id, e); }
+    if(!byId.has(id)){ const e = new El('div'); e.id = id;
+      // 真實 HTML 是 <div id="modalBack" class="hidden">;墊片建出來的元素沒有 class,
+      // 於是開局那一瞬間「視窗是開的」,pumpModal 直接 return,製造出假的空視窗死鎖。
+      if(/^(modalBack)$/.test(id)) e.classList.add('hidden');
+      byId.set(id, e); }
     return byId.get(id);
   },
   querySelectorAll(sel){ return collect(doc.body, sel); },

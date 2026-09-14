@@ -602,7 +602,7 @@
 
 <script>
 'use strict';
-const BUILD = 'kk2';
+const BUILD = 'dm1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -8626,13 +8626,17 @@ function ksHexRound(){
     title:`⚔ 盤上指揮・${KS.scenario ? KS.dispName : T.name + '家'}(即時)`,
     hud: `<div id="hxBoard"></div><div id="hxDetail"></div><div id="hxCtrl"></div><div id="hxGrid"></div>`,
     body:'',
-    choices: []
+    choices: [],            // 軍令列在 hud 的 #hxCtrl 裡,不走 modalChoices
+    // 盤面必須等這個視窗真的登場了才畫。原本寫在 pumpModal() 之後,
+    // 畫面上若已有別的視窗(包圍網來襲那種一季擠一堆事件的時候),
+    // 盤面就畫到別人身上,輪到自己時再被覆寫成空白——整局卡死。
+    onShow: ()=>{
+      $('modalBody').innerHTML = `<div id="hxLog" style="white-space:pre-wrap;font-size:13px;line-height:1.7"></div>`+
+        `<div class="dim" style="font-size:11px;margin-top:4px">戰局每 2.2 秒推進一陣(可加速);軍令下拉隨時可改,亦可指名攻擊某一敵隊(攻▶),兩軍同時進止。騎馬疾行二格且衝鋒有勢、足輕固守成槍衾、弓據高地延射、鐵砲初射奪魄而雨天啞火。友軍/與力自行節度。</div>`;
+      ksHexRedraw(true);
+    }
   });
   pumpModal();
-  // 內文區改作戰報(修改 DOM:body 由 hxLog 承載)
-  $('modalBody').innerHTML = `<div id="hxLog" style="white-space:pre-wrap;font-size:13px;line-height:1.7"></div>`+
-    `<div class="dim" style="font-size:11px;margin-top:4px">戰局每 2.2 秒推進一陣(可加速);軍令下拉隨時可改,亦可指名攻擊某一敵隊(攻▶),兩軍同時進止。騎馬疾行二格且衝鋒有勢、足輕固守成槍衾、弓據高地延射、鐵砲初射奪魄而雨天啞火。友軍/與力自行節度。</div>`;
-  ksHexRedraw(true);
 }
 function ksHexAutoRun(){   // 委任:諸將依勢均判斷——寡則據險守勢,眾則合圍猛攻
   let guard = 0;
@@ -10569,8 +10573,8 @@ function winterSettle(){
   // 家中經費:屋敷修繕・祭祀・進物・道具——按「實際經營得起的規模」計(荒田不課)
   const workable = Math.min(S.kokudaka, S.pop * 2);
   const upkRice = ri(workable * 0.04);
-  const upkHouse = ri(workable * 0.009 + S.soldiers * 0.10);
-  const upkMen   = ri(activeR().length * (6 + S.kokudaka/400));       // 家臣的屋敷・扶持・裝束
+  const upkHouse = ri(workable * 0.009 + S.soldiers * (0.10 + S.kokudaka/ECON.sol));
+  const upkMen   = ri(activeR().length * (6 + S.kokudaka/ECON.chi));  // 家臣的屋敷・扶持・裝束
   const upkFort  = ri((S.fort||0) * 25);                              // 城砦的修繕與番役
   const upkGun   = ri((S.army && S.army.teppo || 0) * 0.55);          // 鐵砲隊的火藥鉛彈
   const upkMoney = upkHouse + upkMen + upkFort + upkGun;
@@ -11785,6 +11789,23 @@ function pumpModal(){
     box.appendChild(b);
   }
   $('modalBack').classList.remove('hidden');
+  // onShow:要在視窗「真的顯示之後」才動它的 DOM。
+  // 盤上指揮原本是 queueModal → pumpModal → 直接改 $('modalBody');
+  // 但畫面上若已有別的視窗,pumpModal 會直接 return,那些 DOM 就寫到別人身上,
+  // 等輪到自己時再被 m.body/m.hud 覆寫成空白——開出一個無處可點的框。
+  if(m.onShow){ try{ m.onShow(); }catch(e){ console && console.error && console.error(e); } }
+  // 死鎖護欄:顯示完仍一個按鈕都沒有,就給一條退路。
+  // 正常的視窗到不了這裡(choices 至少一項,盤上指揮的軍令列在 hud 裡)。
+  try{
+    const hasBtn = (id)=>{ const el = $(id); return !!(el && el.querySelectorAll
+                          && el.querySelectorAll('button').length); };
+    if(!hasBtn('modalChoices') && !hasBtn('modalHud') && !hasBtn('modalBody')){
+      const esc = document.createElement('button');
+      esc.innerHTML = '閉じる<small>此畫面無可下之令(請回報此情形)</small>';
+      esc.onclick = ()=>{ $('modalBack').classList.add('hidden'); save(); render(); pumpModal(); };
+      box.appendChild(esc);
+    }
+  }catch(e){}
 }
 
 // 軍配者の助言:當前最要緊的一件事(復用破綻評分,常駐右欄頂)
@@ -14089,6 +14110,15 @@ $('btnKuge').onclick = () => {
   save(); render();
 };
 // 雇傭兵:錢直接換兵,不耗領民,但養兵費照算
+// ── 家中經費的兩個槓桿 ──
+// 量測(MONEY=1)顯示:收入自開局十年到末年長 7.7 倍,而遊戲自己的支出只長 3.0 倍,
+// 吸收率從 42% 一路掉到 16%——因為賣米與經商皆隨石高而長,而扶持、城砦、鐵砲
+// 各有上限(家臣封頂十二人、城砦封頂五級)。錢於是在第三十年後不再是個決策。
+// 兩處都改成「隨石高而重」,則大家業自然開銷大,而小家開局幾乎不受影響。
+const ECON = {
+  sol: 7000,   // 兵的扶持:一人一季 0.10 + 石高/sol 貫(五百石時形同無有,萬石時才咬人)
+  chi: 150     // 知行:一名家臣一季 6 + 石高/chi 貫
+};
 const yatoiN = () => Math.max(8, ri(12 + S.kokudaka/260));
 const yatoiCost = () => ri(yatoiN() * 13);
 $('btnYatoi').onclick = () => {

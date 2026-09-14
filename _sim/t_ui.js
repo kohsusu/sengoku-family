@@ -73,5 +73,47 @@ ev(`(()=>{ const b = document.getElementById('btnSave2'); if(b && b.onclick) b.o
 const stored2 = ev(`(()=>{ try{ return JSON.parse(localStorage.getItem(SLOT_KEY(curSlot))||'{}').money; }catch(e){ return -1; } })()`);
 ok('btnSave2(吸底💾) 真寫入', stored2 === 41414, '存欄money=' + stored2);
 
+// ── 視窗不可以開成一片空白、無處可點 ──
+// (註:queueModal 會把「單鈕・無 hud・短內文」的純通報降級成年代記一行、不進佇列,
+//  所以底下的測試視窗一律給兩個選項,否則量的是降級路徑而非顯示路徑。)
+// 盤上指揮曾經 queueModal → pumpModal → 直接改 $('modalBody');
+// 畫面上若已有別的視窗(包圍網來襲那種一季擠一堆事件的時候),pumpModal 會直接 return,
+// 盤面遂畫到別人身上,輪到自己時再被 m.body/m.hud 覆寫成空白——整局卡死,退不出去。
+{
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+
+  // ① onShow 要在視窗真的顯示之後才跑
+  ev("__seen = []; queueModal({title:'甲', body:'', choices:[{label:'領命', fn:function(){}},{label:'再議', fn:function(){}}]," +
+     " onShow:function(){ __seen.push('甲:' + ($('modalTitle').textContent)); }}); pumpModal();");
+  ok('onShow 於視窗顯示後觸發,且看得到自己的標題', ev("__seen.join('|')") === '甲:甲', ev("__seen.join('|')"));
+
+  // ② 前面有視窗擋著時,後來者的 onShow 不可提早跑——那正是畫到別人身上的成因
+  ev("queueModal({title:'乙', body:'', choices:[{label:'領命', fn:function(){}},{label:'再議', fn:function(){}}]," +
+     " onShow:function(){ __seen.push('乙:' + ($('modalTitle').textContent)); }}); pumpModal();");
+  ok('被擋在後面時 onShow 不提早跑(不會畫到別人的視窗上)', ev("__seen.length") === 1,
+     ev("__seen.join('|')"));
+
+  // 關掉甲,乙登場,這時才輪到它畫
+  ev("$('modalBack').classList.add('hidden'); pumpModal();");
+  ok('前一扇關上後,後來者才畫自己的內容', ev("__seen.join('|')") === '甲:甲|乙:乙', ev("__seen.join('|')"));
+
+  // ③ 死鎖護欄:真的一個按鈕都沒有時,一定補得出一條退路
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+  ev("queueModal({title:'絕地', hud:'', body:'', choices:[]}); pumpModal();");
+  ok('毫無選項的視窗會補上退路(不可鎖死玩家)',
+     ev("$('modalChoices').querySelectorAll('button').length") >= 1,
+     ev("($('modalChoices').innerHTML||'').slice(0,40)"));
+
+  // ④ 盤上指揮已改用 onShow,而不是 pumpModal 之後硬改 DOM
+  {
+    const i = HTML.indexOf('function ksHexRound');
+    const seg = HTML.slice(i, HTML.indexOf('function ksHexAutoRun', i));
+    ok('盤上指揮以 onShow 畫盤面', seg.indexOf('onShow') > 0 && seg.indexOf('ksHexRedraw') > seg.indexOf('onShow'), '');
+    ok('盤上指揮不再於 pumpModal() 之後才動 modalBody',
+       seg.indexOf("pumpModal();") > seg.indexOf("$('modalBody')"), '');
+  }
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+}
+
 for(const [st,n,note] of R) console.log(st, n, note?(' — '+note):'');
 console.log(R.some(r=>r[0]==='✗') ? '✗ 有未過' : '全部通過');
