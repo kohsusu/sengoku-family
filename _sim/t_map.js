@@ -628,6 +628,47 @@ ok('臣服者的直轄只灌回一成五(原為二成五,雪球太快)',
   ok('五條專屬路徑開局皆未達成', always.length === 0, always.join(' ') || '五者俱須經營');
 }
 
+// ── 31. 家中經費要跟著規模走 ──
+// 量測(MONEY=1)顯示:收入自開局十年到末年長 7.7 倍,遊戲自己的支出只長 3.0 倍,
+// 吸收率從 42% 掉到 16%——因為賣米與經商皆隨石高而長,而扶持、城砦、鐵砲各有上限。
+// 錢於是在第三十年之後不再是個決策。兩個槓桿改成隨石高而重之後,末期吸收率回到三成餘。
+{
+  // 「家中經費:米 X 石、錢 Y 貫」是 lines.push 進季報視窗的,不走 log,
+  // 也不能拿 endSeason 前後的 S.money 相減(那一季的收入也一併結算了)。
+  // 所以包住 queueModal,從季報的 body 撈那一行。抓不到就回 0,讓斷言真的失敗。
+  const upk = (koku, men, sol) => {
+    g.startGame(g.newState('經', 0, 'kokujin', 'gozoku', 'mikawa'));
+    ev("modalQueue.length=0; $('modalBack').classList.add('hidden');");
+    ev("__cap=[]; (function(){ const Q=queueModal; queueModal=function(m){"
+       + " if(m && m.body) __cap.push(String(m.body)); return Q.apply(this,arguments); }; })();");
+    ev("S.kokudaka=" + koku + "; S.pop=" + (koku * 3) + "; S.soldiers=" + sol + ";"
+       + " S.army={ashigaru:" + sol + ",yumi:0,kiba:0,teppo:0}; S.rice=99999; S.money=99999;"
+       + " while(S.retainers.length < " + men + ") S.retainers.push(JSON.parse(JSON.stringify(S.retainers[1])));"
+       + " S.retainers.forEach(r=>{ r.sick=0; r.stamina=100; r.spare=false; });");
+    // 家中經費是歲末才結算的——只跑一季還在春天,什麼都撈不到
+    for(let q = 0; q < 5; q++){
+      ev("endSeason(); modalQueue.length=0; $('modalBack').classList.add('hidden');");
+      if(ev("__cap.filter(t=>t.indexOf('家中經費')>=0).length")) break;
+    }
+    const hit = ev("(__cap.filter(t=>t.indexOf('家中經費')>=0)[0]||'')");
+    const m = /錢 (\d+) 貫/.exec(hit);
+    ev("modalQueue.length=0; $('modalBack').classList.add('hidden');");
+    return m ? +m[1] : 0;
+  };
+  const small = upk(500, 4, 60), big = upk(10000, 9, 300);
+  ok('萬石之家的歲末經費遠重於五百石之家(收入隨規模長,開銷也要)',
+     small > 0 && big > small * 6, '五百石 ' + small + ' 貫/年 → 萬石 ' + big
+     + ' 貫/年(' + (big / Math.max(1, small)).toFixed(1) + ' 倍)');
+
+  // 槓桿要看得見、可調——係數埋在算式裡就沒人找得到
+  ok('兩個槓桿具名於 ECON', ev('typeof ECON') === 'object'
+     && ev('ECON.sol') > 0 && ev('ECON.chi') > 0,
+     '兵 0.10+石高/' + ev('ECON.sol') + '・知行 6+石高/' + ev('ECON.chi'));
+
+  // 但小家開局不可被誤傷:五百石的季開銷不該吃掉一季的收成
+  ok('五百石小家的歲末經費仍屬輕微(開局不可被誤傷)', small > 0 && small < 120, small + ' 貫/年');
+}
+
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
 console.log(n?'✗ 有未過':'全部通過');
