@@ -287,9 +287,13 @@ function household(P, rec){
         if(k){ k.click(); break; }
         const close = btns.find(b => /^(退下|告辭|罷了|……|領命)/.test(b.textContent));
         if(close){ close.click(); break; }
+        // 找不到目標也找不到退出鈕:那是我們自己開的面板,藏掉即可。
+        // (不可交給 drain——它會依性格去點面板裡別的按鈕,改變的是模擬台的行為而非它看得到什麼)
         $('modalBack').classList.add('hidden'); break;
       }
-      $('modalBack').classList.add('hidden');
+      // 原本這裡還有一行無條件 add('hidden'):點擊之後跳出的**下一個視窗**
+      // (勧誘的結果、迫使臣服之後的「⛩ 大名として」)會被它吃掉,drain 看到
+      // 視窗已藏便直接返回——模擬台於是從來沒看過玩家昇格的那一刻。
       drain(P, rec);
     }
   }
@@ -314,9 +318,13 @@ function household(P, rec){
         if(pick){ pick.click(); break; }
         const close = btns.find(b => /^(退下|告辭|罷了|……|領命|不必)/.test(b.textContent));
         if(close){ close.click(); break; }
+        // 找不到目標也找不到退出鈕:那是我們自己開的面板,藏掉即可。
+        // (不可交給 drain——它會依性格去點面板裡別的按鈕,改變的是模擬台的行為而非它看得到什麼)
         $('modalBack').classList.add('hidden'); break;
       }
-      $('modalBack').classList.add('hidden');
+      // 原本這裡還有一行無條件 add('hidden'):點擊之後跳出的**下一個視窗**
+      // (勧誘的結果、迫使臣服之後的「⛩ 大名として」)會被它吃掉,drain 看到
+      // 視窗已藏便直接返回——模擬台於是從來沒看過玩家昇格的那一刻。
       drain(P, rec);
     }
   }
@@ -418,10 +426,17 @@ for(let seed = 0; seed < N; seed++){
       assign(P, g.S);
       household(P, rec);
       g.endSeason();
-      rec.decisions += drain(P, rec);
+      { const d0 = drain(P, rec); rec.decisions += d0;
+        const dec = Math.floor((g.S.year - 1545) / 10);
+        (rec.decByDec = rec.decByDec || {})[dec] = (rec.decByDec[dec] || 0) + d0;
+        (rec.seasByDec = rec.seasByDec || {})[dec] = (rec.seasByDec[dec] || 0) + 1; }
       if(i % 2 === 0) audit(g.S, rec, g.S.year+'-'+g.S.season);
       if(!rec.skYr && ev('skCapLeft()') <= 0) rec.skYr = g.S.year;   // 幾年練滿三十點
       if(i % 8 === 0) (rec.mCurve = rec.mCurve || []).push([g.S.year, Math.round(g.S.money)]);
+      if(i % 8 === 0){   // 多角色審查:存檔隨年代長多大(十個遊戲共用一個 origin 的配額)
+        let sz = 0; try{ sz = JSON.stringify(g.S).length; }catch(e){}
+        (rec.szCurve = rec.szCurve || []).push([g.S.year, sz]);
+      }
       { // 觸及範圍:一局裡玩家實際打得到／收得到的家數(擴圖之後最該問的一個數)
         const t = ev(`(()=>{ let n=0, far=0;
           for(const f of S.rivals){ if(!f.alive) continue;
@@ -456,6 +471,9 @@ for(let seed = 0; seed < N; seed++){
     ms: Date.now() - t0,
     year:S.year, over:!!S.gameOver, koku:S.kokudaka, prest:S.prestige, pop:S.pop,
     sk:ev('skTotalLv()+skPt()'), skCap:ev('skCapLeft()')<=0, kuge:S.kuge||0,
+    szTop: (()=>{ try{ return Object.keys(S).map(k=>[k, JSON.stringify(S[k]||'').length])
+                     .sort((a,b)=>b[1]-a[1]).slice(0,8); }catch(e){ return []; } })(),
+    notices: rec.logs.filter(l=>/^📯 /.test(l)).map(l=>l.slice(2, l.indexOf('——')>0 ? l.indexOf('——') : 24)),
     sol:S.soldiers, rice:Math.round(S.rice), money:Math.round(S.money), minshin:S.minshin,
     retainers:S.retainers.length, active:ev('activeR().length'),
     spare:S.retainers.filter(r=>r.spare).length, gens:(S.lineage||[]).length,

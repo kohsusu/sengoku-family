@@ -115,5 +115,37 @@ ok('btnSave2(吸底💾) 真寫入', stored2 === 41414, '存欄money=' + stored2
   ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
 }
 
+// ── 重要事件不可被靜音 ──
+// queueModal 原本把「單鈕・無 hud・內文短」一律降級成年代記一行並自動執行,
+// 只靠標題黑名單擋下重要的。實測 150 局靜音了 24 種視窗,無一種該被靜音:
+// ⛩ 大名として、📜 陣觸れ、各合戰結果、圍城成否、【If】線劇情轉折、梅雨大水……
+// 改成白名單:只有標了 notice:true 的才降級。
+{
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+  const seen = () => ev("modalQueue.length") + (ev("$('modalBack').classList.contains('hidden')") ? 0 : 1);
+
+  // 單鈕、無 hud、內文短——正是從前會被靜音的那種
+  ev("queueModal({title:'⛩ 大名として', body:'昇格為大名。', choices:[{label:'受領', fn:function(){}}]});");
+  ok('單鈕短視窗預設會被看見(不再被靜音)', seen() >= 1, '佇列+畫面 ' + seen());
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+
+  ev("queueModal({title:'📜 陣觸れ——今川家動員令', body:'下季出陣。', choices:[{label:'領命', fn:function(){}}]});");
+  ok('陣觸れ(一季前的預告)會被看見', seen() >= 1, '');
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+
+  ev("queueModal({title:'【If】義元入京', body:'天下易主。', choices:[{label:'……', fn:function(){}}]});");
+  ok('【If】線劇情轉折會被看見(舊黑名單只擋【史】)', seen() >= 1, '');
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+
+  // 白名單仍然有效:明確標了 notice 的才降級,且即行其效
+  ev("__ran = 0; queueModal({title:'例行', body:'小事。', notice:true, choices:[{label:'知道了', fn:function(){ __ran++; }}]});");
+  ok('標了 notice:true 的才降級,且即行其效', seen() === 0 && ev('__ran') === 1, '執行 ' + ev('__ran') + ' 次');
+
+  // 第二道保險:就算誤標 notice,史實/勝敗大事仍不降級
+  ev("queueModal({title:'【史】桶狹間の戰(1560)', body:'義元討死。', notice:true, choices:[{label:'……', fn:function(){}}]});");
+  ok('誤標 notice 的史實大事仍會被看見(黑名單作第二道保險)', seen() >= 1, '');
+  ev("modalQueue.length = 0; $('modalBack').classList.add('hidden');");
+}
+
 for(const [st,n,note] of R) console.log(st, n, note?(' — '+note):'');
 console.log(R.some(r=>r[0]==='✗') ? '✗ 有未過' : '全部通過');
