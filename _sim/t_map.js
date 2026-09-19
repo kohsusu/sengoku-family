@@ -669,6 +669,25 @@ ok('臣服者的直轄只灌回一成五(原為二成五,雪球太快)',
   ok('五百石小家的歲末經費仍屬輕微(開局不可被誤傷)', small > 0 && small < 120, small + ' 貫/年');
 }
 
+// ── 32. 陣營邊界的墨線不可以是階梯 ──
+// 原本每一段格線各自 moveTo/lineTo,是一堆互不相連的子路徑,
+// lineJoin:'round' 全無作用,放大看就是一階一階的 3px 樓梯。
+// 這一組讀原始碼——墊片沒有真的 canvas,量不到幾何,但量得到「寫法」。
+{
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const i = src.indexOf('const seg = (thick)=>{');
+  const seg = src.slice(i, src.indexOf('c.save();', i));
+  ok('邊界先接成折線再落筆(不是一格一段)',
+     seg.indexOf('adj') > 0 && seg.indexOf('walk') > 0 && /c\.beginPath\(\)/.test(seg),
+     '');
+  ok('折線有平滑(Chaikin)且先抽稀', seg.indexOf('Chaikin') > 0 && seg.indexOf('0.75') > 0
+     && seg.indexOf('i+=3') > 0, '');
+  ok('行經岔路取最順原方向的一支(丁字口不打折)', seg.indexOf('bestDot') > 0, '');
+  // 舊寫法的指紋:在同一個迴圈裡 moveTo 後緊接著 lineTo 到相鄰格點
+  ok('不再有「每格一段」的舊寫法',
+     !/c\.moveTo\(X0\+\(ix\+1\)\*CELL/.test(seg), '');
+}
+
 let n=0;
 for(const [t,c,note] of checks){ console.log((c?'✓':'✗'), t, note?(' — '+note):''); if(!c)n++; }
 console.log(n?'✗ 有未過':'全部通過');

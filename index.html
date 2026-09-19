@@ -602,7 +602,7 @@
 
 <script>
 'use strict';
-const BUILD = 'dm1';
+const BUILD = 'bd1';
 // ============================================================
 // i18n 顯示層翻譯:邏輯一律走中文字串,僅在 DOM 渲染後替換顯示文字
 // (中文字串同時是程式鍵值,故絕不在資料層翻譯)
@@ -13247,19 +13247,89 @@ function _drawInfluenceRaw(c, R){
   c.drawImage(soft, X0, Y0, W2, H2);
   c.restore();
   // ── 墨線:眾與眾之間細線,陣營與陣營之間粗線(大名的勢力輪廓才浮得出來) ──
+  // 原本每一段格線各自 moveTo/lineTo,是一堆互不相連的子路徑——
+  // lineJoin:'round' 於是全無作用,近看就是一階一階的 3px 樓梯。
+  // 改成:先把邊界格線接成連續折線,再以 Chaikin 磨圓,最後才落筆。
+  // 手描地圖的界線本就不會沿著方格走。
   const seg = (thick)=>{
-    c.beginPath();
+    // ① 收邊:以「格點」為節點(格點 (nx,ny) 即畫布上的 X0+nx*CELL, Y0+ny*CELL)
+    const adj = new Map();
+    const link = (a, b)=>{
+      let la = adj.get(a); if(!la){ la = []; adj.set(a, la); } la.push(b);
+      let lb = adj.get(b); if(!lb){ lb = []; adj.set(b, lb); } lb.push(a);
+    };
+    const campOf = i => i < 0 ? null : act[i].camp;
+    const diffCamp = (a,b)=> campOf(a) !== campOf(b);
     for(let ix=0; ix<NX; ix++) for(let iy=0; iy<NY; iy++){
       const k = win[ix*NY+iy];
       const r = ix+1 < NX ? win[(ix+1)*NY+iy] : -1;
       const d = iy+1 < NY ? win[ix*NY+iy+1] : -1;
-      const campOf = i => i < 0 ? null : act[i].camp;
-      const diffCamp = (a,b)=> campOf(a) !== campOf(b);
       // 對著無主之地的那一側不描界——兵鋒所及的盡頭不是國界,讓淡彩自己淡出去
-      if(k >= 0 && r >= 0 && k !== r && (diffCamp(k,r) === thick)){
-        c.moveTo(X0+(ix+1)*CELL, Y0+iy*CELL); c.lineTo(X0+(ix+1)*CELL, Y0+(iy+1)*CELL); }
-      if(k >= 0 && d >= 0 && k !== d && (diffCamp(k,d) === thick)){
-        c.moveTo(X0+ix*CELL, Y0+(iy+1)*CELL); c.lineTo(X0+(ix+1)*CELL, Y0+(iy+1)*CELL); }
+      if(k >= 0 && r >= 0 && k !== r && (diffCamp(k,r) === thick))
+        link((ix+1)*4096 + iy, (ix+1)*4096 + (iy+1));
+      if(k >= 0 && d >= 0 && k !== d && (diffCamp(k,d) === thick))
+        link(ix*4096 + (iy+1), (ix+1)*4096 + (iy+1));
+    }
+    if(!adj.size) return;
+
+    // ② 串成折線。行經岔路時取「最順著原方向」的一支,線才不會在丁字口打折。
+    const used = new Set();
+    const ek = (a,b)=> a < b ? a * 16777216 + b : b * 16777216 + a;
+    const px = n => Math.floor(n / 4096), py = n => n % 4096;
+    const walk = (start)=>{
+      let cur = start, prev = -1;
+      const path = [cur];
+      for(;;){
+        const ns = adj.get(cur); if(!ns) break;
+        let best = -1, bestDot = -2;
+        for(const n of ns){
+          if(used.has(ek(cur, n))) continue;
+          if(prev < 0){ best = n; break; }
+          const dx1 = px(cur)-px(prev), dy1 = py(cur)-py(prev);
+          const dx2 = px(n)-px(cur),    dy2 = py(n)-py(cur);
+          const dot = dx1*dx2 + dy1*dy2;          // 單位格,不必正規化
+          if(dot > bestDot){ bestDot = dot; best = n; }
+        }
+        if(best < 0) break;
+        used.add(ek(cur, best));
+        path.push(best); prev = cur; cur = best;
+      }
+      return path;
+    };
+    const lines = [];
+    // 先從端點(只有一條邊)起走,開放的界線才不會被從中間截斷;剩下的是環
+    for(const [k, ns] of adj) if(ns.length === 1){ const w = walk(k); if(w.length > 1) lines.push(w); }
+    for(const [k] of adj){ const w = walk(k); if(w.length > 1) lines.push(w); }
+
+    // ③ 先抽稀,再 Chaikin。
+    // 只做 Chaikin 是不夠的:它把每個 3px 的直角磨圓,階梯的「structure」卻還在,
+    // 放大看仍是一階一階。先每隔三點取一點(階距拉到 9px),再切角三次,
+    // 線才真正流起來。色塊本身經過 blur(6px)+alpha .52,幾像素的偏移看不出來。
+    const smooth = (pts)=>{
+      let q = pts.map(n => [X0 + px(n)*CELL, Y0 + py(n)*CELL]);
+      if(q.length > 6){
+        const d = [q[0]];
+        for(let i=3; i<q.length-1; i+=3) d.push(q[i]);
+        d.push(q[q.length-1]);
+        q = d;
+      }
+      for(let t=0; t<3 && q.length >= 3; t++){
+        const o = [q[0]];
+        for(let i=0; i<q.length-1; i++){
+          const a = q[i], b = q[i+1];
+          o.push([a[0]*0.75 + b[0]*0.25, a[1]*0.75 + b[1]*0.25]);
+          o.push([a[0]*0.25 + b[0]*0.75, a[1]*0.25 + b[1]*0.75]);
+        }
+        o.push(q[q.length-1]);
+        q = o;
+      }
+      return q;
+    };
+    c.beginPath();
+    for(const ln of lines){
+      const q = smooth(ln);
+      c.moveTo(q[0][0], q[0][1]);
+      for(let i=1; i<q.length; i++) c.lineTo(q[i][0], q[i][1]);
     }
     c.stroke();
   };
